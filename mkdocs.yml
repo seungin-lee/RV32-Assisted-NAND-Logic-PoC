@@ -1,0 +1,60 @@
+site_name: RV32-Assisted NAND Logic PoC
+site_description: Architecture and block-level contracts for the NAND model PoC.
+
+docs_dir: design_spec
+site_dir: docs/mkdocs-site
+use_directory_urls: false
+
+theme:
+  name: material
+  language: ko
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - mkdocs_gfm_lists
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid-source
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_css:
+  - assets/stylesheets/mermaid-zoom.css
+
+extra_javascript:
+  - assets/javascripts/mermaid-zoom.js
+
+nav:
+  - Project Introduction: Project_Introduction.md
+  - Architecture: Architecture.md
+  - SDR Mode 0 Behavior Model: SIMPLE_ONFI_SDR_behavior_model_reference.md
+  - Host TB Traffic Scenario: host_tb_traffice_scenario.md
+  - Decode FSM:
+      - SIMPLE ONFI SDR Decode FSM: SIMPLE_ONFI_SDR_decode_fsm.md
+  - Adapter / CDC:
+      - NAND Adapter Contracts: nand_adapter_contracts.md
+      - NAND CDC IP: nand_cdc_ip.md
+  - Data Path:
+      - Page Buffer: nand_page_buffer.md
+      - Read Output Datapath: nand_read_output_datapath.md
+  - Control / Firmware:
+      - Cell Operation: nand_cell_operation.md
+      - Register Bank: nand_register_bank.md
+      - Control FW: nand_control_fw.md
+      - VPL: nand_model_vpl.md
+      - PicoRV32 Integration: nand_picorv32.md
+  - Appendix:
+      - FSM RTL Design Guide: FSM_RTL_Design_Guide.md
+  - Index / Revision:
+      - File Index: File_Index.md
+      - Design Revision History: Design_Revision_History.md

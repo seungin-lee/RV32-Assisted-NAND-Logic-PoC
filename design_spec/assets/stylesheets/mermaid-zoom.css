@@ -1,0 +1,106 @@
+.mermaid-rendered {
+  cursor: zoom-in;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.mermaid-rendered svg {
+  max-width: none;
+}
+
+.mermaid-render-error {
+  cursor: default;
+}
+
+.mermaid-zoom-overlay {
+  align-items: stretch;
+  background: rgba(12, 16, 24, 0.88);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 12px;
+  position: fixed;
+  z-index: 9999;
+}
+
+.mermaid-zoom-dialog {
+  background: var(--md-default-bg-color, #fff);
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  color: var(--md-default-fg-color, #111);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 12px;
+  position: relative;
+  width: calc(100vw - 24px);
+}
+
+.mermaid-zoom-toolbar {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-bottom: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.mermaid-zoom-button {
+  align-items: center;
+  background: var(--md-code-bg-color, #f5f5f5);
+  border: 1px solid var(--md-default-fg-color--lighter, #ccc);
+  border-radius: 6px;
+  color: var(--md-default-fg-color, #111);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  height: 36px;
+  justify-content: center;
+  min-width: 36px;
+  padding: 0 10px;
+}
+
+.mermaid-zoom-button:hover {
+  background: var(--md-accent-fg-color--transparent, rgba(82, 108, 254, 0.12));
+}
+
+.mermaid-zoom-button:focus {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.mermaid-zoom-stage {
+  flex: 1 1 auto;
+  overflow: auto;
+  position: relative;
+}
+
+.mermaid-zoom-content {
+  display: inline-block;
+  max-width: none;
+  min-width: 100%;
+  padding: 8px;
+  transform-origin: top left;
+}
+
+.mermaid-zoom-content svg {
+  height: auto !important;
+  max-width: none !important;
+}
+
+.mermaid-zoom-fallback {
+  background: var(--md-code-bg-color, #f5f5f5);
+  border-radius: 6px;
+  color: var(--md-code-fg-color, #111);
+  padding: 16px;
+  white-space: pre;
+}
+
+.mermaid-zoom-close {
+  background: var(--md-accent-fg-color, #526cfe);
+  color: var(--md-accent-bg-color, #fff);
+}

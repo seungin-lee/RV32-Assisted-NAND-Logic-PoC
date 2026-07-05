@@ -1,0 +1,3 @@
+[submodule "tools/sby"]
+	path = tools/sby
+	url = https://github.com/YosysHQ/sby.git

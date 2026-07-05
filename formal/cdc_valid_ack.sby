@@ -1,0 +1,24 @@
+# Purpose: SymbiYosys wrapper for the NAND-owned cdc_valid_ack formal harness.
+# Role: Formal verification only.
+# Related design docs:
+# - design_spec/nand_cdc_ip.md
+# File version: v0.2
+# Revision history:
+# - v0.2: Read copied SymbiYosys workdir source basenames so the
+#   wrapper runs from the generated src directory.
+# - v0.1: Import CDC valid/ack SBY wrapper into NAND repository.
+
+[options]
+mode bmc
+depth 32
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal -sv cdc_valid_ack_formal.sv cdc_valid_ack.sv
+prep -top cdc_valid_ack_formal
+
+[files]
+formal/cdc_valid_ack_formal.sv
+nand_model/cdc_valid_ack.sv

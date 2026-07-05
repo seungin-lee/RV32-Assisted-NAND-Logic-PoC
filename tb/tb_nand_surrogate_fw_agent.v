@@ -1,0 +1,397 @@
+`timescale 1ns/1ps
+`default_nettype none
+
+`include "nand_parameters.vh"
+`include "onfi_sdr_defs.vh"
+
+// Purpose: Smoke test for the behavioral NAND surrogate FW agent.
+// Role: Simulation-only testbench.
+// Related design docs:
+// - design_spec/nand_control_fw.md
+// - design_spec/nand_register_bank.md
+// Block contract: Verifies that the surrogate FW agent reacts to Register Bank
+// IRQs, reads the host mailbox through MMIO, writes readout/VPL command
+// registers, and clears handled IRQ/status bits through the documented paths.
+// File version: v0.2
+// Revision history:
+// - v0.2: Connect Register Bank Read Output ID address snapshot
+//   port.
+// - v0.1: Initial IRQ-driven surrogate FW agent smoke test.
+
+module tb_nand_surrogate_fw_agent;
+
+    localparam [31:0] REG_BASE = 32'h0200_0000;
+
+    reg core_clk;
+    reg core_rst_n;
+
+    wire        cpu_valid;
+    wire [31:0] cpu_addr;
+    wire [31:0] cpu_wdata;
+    wire [ 3:0] cpu_wstrb;
+    wire [31:0] cpu_rdata;
+    wire        cpu_ready;
+
+    reg        reg_event_valid;
+    wire       reg_event_ready;
+    reg [3:0]  reg_decoded_op;
+    reg [7:0]  reg_cmd;
+    reg [7:0]  reg_addr0;
+    reg [7:0]  reg_addr1;
+    reg [7:0]  reg_addr2;
+    reg [7:0]  reg_addr3;
+    reg [7:0]  reg_addr4;
+    reg [2:0]  reg_addr_count;
+    reg [12:0] reg_prog_data_count;
+    reg        reg_protocol_error;
+    reg [3:0]  reg_protocol_error_code;
+
+    reg        wp_n;
+    reg        pb_prog_ready;
+    reg        pb_overflow;
+    wire       pb_prog_clear;
+
+    wire        vpl_cmd_valid;
+    reg         vpl_cmd_ready;
+    wire [31:0] vpl_cmd_block;
+    wire [31:0] vpl_cmd_page;
+    wire [31:0] vpl_cmd_col;
+    wire [31:0] vpl_cmd_page_bytes;
+    wire [31:0] vpl_cmd_op_ctrl;
+    wire [31:0] vpl_cmd_latency;
+    wire [7:0]  vpl_cmd_vread_level;
+    wire [7:0]  vpl_cmd_vpgm_level;
+    wire [7:0]  vpl_cmd_vpass_level;
+    wire [7:0]  vpl_cmd_vers_level;
+    wire [2:0]  vpl_cmd_bl_ctrl;
+    wire [8:0]  vpl_cmd_wl_ctrl;
+    wire [6:0]  vpl_cmd_line_ctrl;
+    wire [1:0]  vpl_cmd_bias_profile;
+
+    reg        vpl_rsp_valid;
+    wire       vpl_rsp_ready;
+    reg        vpl_rsp_done;
+    reg        vpl_rsp_error;
+    reg [7:0]  vpl_rsp_error_code;
+    reg        vpl_rsp_fail;
+    reg        vpl_rsp_pb_valid;
+
+    wire [7:0] nand_status;
+    wire [5:0] op_status;
+    wire [7:0] op_error;
+    wire [7:0] readout_ctrl;
+    wire [7:0] readout_id_addr;
+    wire       readout_ptr_reset_pulse;
+    wire       host_event_pending;
+    wire [2:0] irq_status;
+    wire [2:0] irq_enable;
+    wire       irq;
+    wire       reg_busy;
+    wire       reg_ready;
+    wire       access_error;
+
+    integer fail_count;
+
+    nand_register_bank #(
+        .REG_BASE(REG_BASE)
+    ) u_register_bank (
+        .core_clk(core_clk),
+        .core_rst_n(core_rst_n),
+        .cpu_valid_i(cpu_valid),
+        .cpu_addr_i(cpu_addr),
+        .cpu_wdata_i(cpu_wdata),
+        .cpu_wstrb_i(cpu_wstrb),
+        .cpu_rdata_o(cpu_rdata),
+        .cpu_ready_o(cpu_ready),
+        .reg_event_valid_i(reg_event_valid),
+        .reg_event_ready_o(reg_event_ready),
+        .reg_decoded_op_i(reg_decoded_op),
+        .reg_cmd_i(reg_cmd),
+        .reg_addr0_i(reg_addr0),
+        .reg_addr1_i(reg_addr1),
+        .reg_addr2_i(reg_addr2),
+        .reg_addr3_i(reg_addr3),
+        .reg_addr4_i(reg_addr4),
+        .reg_addr_count_i(reg_addr_count),
+        .reg_prog_data_count_i(reg_prog_data_count),
+        .reg_protocol_error_i(reg_protocol_error),
+        .reg_protocol_error_code_i(reg_protocol_error_code),
+        .wp_n_i(wp_n),
+        .pb_prog_ready_i(pb_prog_ready),
+        .pb_overflow_i(pb_overflow),
+        .pb_prog_clear_o(pb_prog_clear),
+        .vpl_cmd_valid_o(vpl_cmd_valid),
+        .vpl_cmd_ready_i(vpl_cmd_ready),
+        .vpl_cmd_block_o(vpl_cmd_block),
+        .vpl_cmd_page_o(vpl_cmd_page),
+        .vpl_cmd_col_o(vpl_cmd_col),
+        .vpl_cmd_page_bytes_o(vpl_cmd_page_bytes),
+        .vpl_cmd_op_ctrl_o(vpl_cmd_op_ctrl),
+        .vpl_cmd_latency_o(vpl_cmd_latency),
+        .vpl_cmd_vread_level_o(vpl_cmd_vread_level),
+        .vpl_cmd_vpgm_level_o(vpl_cmd_vpgm_level),
+        .vpl_cmd_vpass_level_o(vpl_cmd_vpass_level),
+        .vpl_cmd_vers_level_o(vpl_cmd_vers_level),
+        .vpl_cmd_bl_ctrl_o(vpl_cmd_bl_ctrl),
+        .vpl_cmd_wl_ctrl_o(vpl_cmd_wl_ctrl),
+        .vpl_cmd_line_ctrl_o(vpl_cmd_line_ctrl),
+        .vpl_cmd_bias_profile_o(vpl_cmd_bias_profile),
+        .vpl_rsp_valid_i(vpl_rsp_valid),
+        .vpl_rsp_ready_o(vpl_rsp_ready),
+        .vpl_rsp_done_i(vpl_rsp_done),
+        .vpl_rsp_error_i(vpl_rsp_error),
+        .vpl_rsp_error_code_i(vpl_rsp_error_code),
+        .vpl_rsp_fail_i(vpl_rsp_fail),
+        .vpl_rsp_pb_valid_i(vpl_rsp_pb_valid),
+        .nand_status_o(nand_status),
+        .op_status_o(op_status),
+        .op_error_o(op_error),
+        .readout_ctrl_o(readout_ctrl),
+        .readout_id_addr_o(readout_id_addr),
+        .readout_ptr_reset_pulse_o(readout_ptr_reset_pulse),
+        .host_event_pending_o(host_event_pending),
+        .irq_status_o(irq_status),
+        .irq_enable_o(irq_enable),
+        .irq_o(irq),
+        .reg_busy_o(reg_busy),
+        .reg_ready_o(reg_ready),
+        .access_error_o(access_error)
+    );
+
+    nand_surrogate_fw_agent #(
+        .REG_BASE(REG_BASE)
+    ) u_fw (
+        .core_clk(core_clk),
+        .core_rst_n(core_rst_n),
+        .enable_i(1'b1),
+        .irq_i(irq),
+        .cpu_valid_o(cpu_valid),
+        .cpu_addr_o(cpu_addr),
+        .cpu_wdata_o(cpu_wdata),
+        .cpu_wstrb_o(cpu_wstrb),
+        .cpu_rdata_i(cpu_rdata),
+        .cpu_ready_i(cpu_ready)
+    );
+
+    always #5 core_clk = ~core_clk;
+
+    task wait_clk;
+        input integer cycles;
+        integer i;
+        begin
+            for (i = 0; i < cycles; i = i + 1) begin
+                @(posedge core_clk);
+            end
+        end
+    endtask
+
+    task check_true;
+        input condition;
+        input [1023:0] message;
+        begin
+            if (!condition) begin
+                $display("[FAIL] %0s", message);
+                fail_count = fail_count + 1;
+            end else begin
+                $display("[PASS] %0s", message);
+            end
+        end
+    endtask
+
+    task check_eq32;
+        input [31:0] actual;
+        input [31:0] expected;
+        input [1023:0] message;
+        begin
+            if (actual !== expected) begin
+                $display("[FAIL] %0s actual=0x%08x expected=0x%08x",
+                         message, actual, expected);
+                fail_count = fail_count + 1;
+            end else begin
+                $display("[PASS] %0s actual=0x%08x", message, actual);
+            end
+        end
+    endtask
+
+    task launch_host_event;
+        input [3:0]  op;
+        input [7:0]  cmd;
+        input [7:0]  addr0;
+        input [7:0]  addr1;
+        input [7:0]  addr2;
+        input [7:0]  addr3;
+        input [7:0]  addr4;
+        input [2:0]  addr_count;
+        input [12:0] data_count;
+        begin
+            wait (reg_event_ready);
+            @(negedge core_clk);
+            reg_decoded_op = op;
+            reg_cmd = cmd;
+            reg_addr0 = addr0;
+            reg_addr1 = addr1;
+            reg_addr2 = addr2;
+            reg_addr3 = addr3;
+            reg_addr4 = addr4;
+            reg_addr_count = addr_count;
+            reg_prog_data_count = data_count;
+            reg_protocol_error = 1'b0;
+            reg_protocol_error_code = `ONFI_ERR_NONE;
+            reg_event_valid = 1'b1;
+            @(negedge core_clk);
+            reg_event_valid = 1'b0;
+            wait_clk(1);
+        end
+    endtask
+
+    task wait_irq_clear;
+        integer timeout;
+        begin
+            timeout = 0;
+            while (irq_status != 3'b000 && timeout < 100) begin
+                wait_clk(1);
+                timeout = timeout + 1;
+            end
+            check_true(irq_status == 3'b000, "IRQ status clears");
+        end
+    endtask
+
+    task accept_vpl_command;
+        begin
+            wait (vpl_cmd_valid);
+            @(negedge core_clk);
+            vpl_cmd_ready = 1'b1;
+            @(negedge core_clk);
+            vpl_cmd_ready = 1'b0;
+            wait_clk(1);
+        end
+    endtask
+
+    task send_vpl_response;
+        input done;
+        input error;
+        input [7:0] error_code;
+        input fail;
+        input pb_valid;
+        begin
+            @(negedge core_clk);
+            vpl_rsp_done = done;
+            vpl_rsp_error = error;
+            vpl_rsp_error_code = error_code;
+            vpl_rsp_fail = fail;
+            vpl_rsp_pb_valid = pb_valid;
+            vpl_rsp_valid = 1'b1;
+            @(negedge core_clk);
+            vpl_rsp_valid = 1'b0;
+            vpl_rsp_done = 1'b0;
+            vpl_rsp_error = 1'b0;
+            vpl_rsp_error_code = 8'h00;
+            vpl_rsp_fail = 1'b0;
+            vpl_rsp_pb_valid = 1'b0;
+            wait_clk(1);
+        end
+    endtask
+
+    task wait_pb_prog_clear;
+        integer timeout;
+        begin
+            timeout = 0;
+            while (!pb_prog_clear && timeout < 100) begin
+                wait_clk(1);
+                timeout = timeout + 1;
+            end
+            check_true(pb_prog_clear, "FW requests Page Buffer program clear");
+        end
+    endtask
+
+    initial begin
+        core_clk = 1'b0;
+        core_rst_n = 1'b0;
+        reg_event_valid = 1'b0;
+        reg_decoded_op = `ONFI_OP_NONE;
+        reg_cmd = 8'h00;
+        reg_addr0 = 8'h00;
+        reg_addr1 = 8'h00;
+        reg_addr2 = 8'h00;
+        reg_addr3 = 8'h00;
+        reg_addr4 = 8'h00;
+        reg_addr_count = 3'd0;
+        reg_prog_data_count = 13'd0;
+        reg_protocol_error = 1'b0;
+        reg_protocol_error_code = `ONFI_ERR_NONE;
+        wp_n = 1'b1;
+        pb_prog_ready = 1'b0;
+        pb_overflow = 1'b0;
+        vpl_cmd_ready = 1'b0;
+        vpl_rsp_valid = 1'b0;
+        vpl_rsp_done = 1'b0;
+        vpl_rsp_error = 1'b0;
+        vpl_rsp_error_code = 8'h00;
+        vpl_rsp_fail = 1'b0;
+        vpl_rsp_pb_valid = 1'b0;
+        fail_count = 0;
+
+        wait_clk(4);
+        core_rst_n = 1'b1;
+        wait (irq_enable == 3'b111);
+        wait_clk(2);
+
+        $display("[SCENARIO] READ_ID host event");
+        launch_host_event(`ONFI_OP_READ_ID, 8'h90, 8'h00, 8'h00, 8'h00,
+                          8'h00, 8'h00, 3'd1, 13'd0);
+        wait_irq_clear();
+        check_eq32({24'h000000, readout_ctrl}, 32'h0000_0005,
+                   "FW selects Read ID output source");
+
+        $display("[SCENARIO] READ_PAGE host event");
+        launch_host_event(`ONFI_OP_READ_PAGE, 8'h30, 8'h20, 8'h00, 8'h43,
+                          8'h00, 8'h00, 3'd5, 13'd0);
+        wait (vpl_cmd_valid);
+        check_eq32(vpl_cmd_block, 32'h0000_0001, "READ_PAGE target block");
+        check_eq32(vpl_cmd_page, 32'h0000_0003, "READ_PAGE target page");
+        check_eq32(vpl_cmd_col, 32'h0000_0020, "READ_PAGE target column");
+        check_eq32(vpl_cmd_op_ctrl[2:0], 32'h0000_0001, "READ_PAGE opcode");
+        accept_vpl_command();
+        send_vpl_response(1'b1, 1'b0, 8'h00, 1'b0, 1'b1);
+        wait_irq_clear();
+        check_eq32({24'h000000, readout_ctrl}, 32'h0000_0007,
+                   "FW selects Page Buffer output after read done");
+
+        $display("[SCENARIO] PROGRAM host event");
+        pb_prog_ready = 1'b1;
+        launch_host_event(`ONFI_OP_PROGRAM, 8'h10, 8'h00, 8'h00, 8'h81,
+                          8'h00, 8'h00, 3'd5, 13'd16);
+        wait (vpl_cmd_valid);
+        check_eq32(vpl_cmd_block, 32'h0000_0002, "PROGRAM target block");
+        check_eq32(vpl_cmd_page, 32'h0000_0001, "PROGRAM target page");
+        check_eq32(vpl_cmd_op_ctrl[2:0], 32'h0000_0002, "PROGRAM opcode");
+        accept_vpl_command();
+        send_vpl_response(1'b1, 1'b0, 8'h00, 1'b0, 1'b0);
+        wait_pb_prog_clear();
+        wait_irq_clear();
+
+        $display("[SCENARIO] ERASE host event");
+        launch_host_event(`ONFI_OP_ERASE, 8'hd0, 8'hc0, 8'h00, 8'h00,
+                          8'h00, 8'h00, 3'd3, 13'd0);
+        wait (vpl_cmd_valid);
+        check_eq32(vpl_cmd_block, 32'h0000_0003, "ERASE target block");
+        check_eq32(vpl_cmd_page, 32'h0000_0000, "ERASE page offset");
+        check_eq32(vpl_cmd_op_ctrl[2:0], 32'h0000_0003, "ERASE opcode");
+        accept_vpl_command();
+        send_vpl_response(1'b1, 1'b0, 8'h00, 1'b0, 1'b0);
+        wait_irq_clear();
+
+        if (fail_count == 0) begin
+            $display("PASS: nand_surrogate_fw_agent smoke test");
+        end else begin
+            $display("FAIL: nand_surrogate_fw_agent smoke test fail_count=%0d",
+                     fail_count);
+            $fatal;
+        end
+
+        $finish;
+    end
+
+endmodule
+
+`default_nettype wire
