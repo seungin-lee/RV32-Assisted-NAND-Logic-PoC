@@ -45,8 +45,9 @@ if [[ "${SITE_DIR}" != /* ]]; then
     SITE_DIR="${REPO_ROOT}/${SITE_DIR}"
 fi
 
-if [[ ! -f "${SITE_DIR}/index.html" ]]; then
-    cat > "${SITE_DIR}/index.html" <<'HTML'
+mkdir -p "${SITE_DIR}"
+
+cat > "${SITE_DIR}/index.html" <<'HTML'
 <!doctype html>
 <html lang="ko">
   <head>
@@ -59,5 +60,10 @@ if [[ ! -f "${SITE_DIR}/index.html" ]]; then
   </body>
 </html>
 HTML
-    echo "[mkdocs] generated root redirect: ${SITE_DIR}/index.html -> Project_Introduction.html"
+
+if [[ ! -f "${SITE_DIR}/index.html" ]]; then
+    echo "ERROR: failed to generate ${SITE_DIR}/index.html" >&2
+    exit 1
 fi
+
+echo "[mkdocs] generated root redirect: ${SITE_DIR}/index.html -> Project_Introduction.html"
