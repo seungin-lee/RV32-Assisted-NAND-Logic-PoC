@@ -1,5 +1,5 @@
 # NAND Model Architecture
-Version: v0.26
+Version: v0.28
 Status: active
 
 ## 1. 문서 목적
@@ -39,7 +39,46 @@ PicoRV32 관련 원칙과 세부 구조는 NAND repo 내부 vendored core와
 NAND Register Bank MMIO bridge는 이 문서에 반복하지 않고 `nand_picorv32.md`로
 라우팅한다.
 
-## 3. Top-Level Block Diagram
+## 3. Top-Level Overview Diagram
+
+이 그림은 구현 wire 전체를 나타내는 배선도가 아니라, host transaction이 어떤
+책임 경계를 거쳐 control/data/output path로 이어지는지를 보여주는 상위 흐름도다.
+CDC primitive, busy mirror, status mirror 같은 세부 crossing은 다음 detailed view와
+`nand_adapter_contracts.md`를 따른다.
+
+```mermaid
+flowchart LR
+    HOST["ONFI Host<br/>pins + dq/rb_n"]
+    DEC["Decode Frontend<br/>Pin Sync + Decode FSM"]
+    ADAPT["Role Adapters<br/>CDC / handoff boundary"]
+    REG["Register Bank<br/>MMIO / IRQ / Status"]
+    CTRL["Control Agent<br/>surrogate_fw or RV32 FW"]
+    EXEC["Page Buffer + VPL<br/>NAND Array operation"]
+    OUT["Read Output + RB_N<br/>host-facing response"]
+
+    HOST --> DEC
+    DEC -- "event" --> ADAPT
+    DEC -- "program data stream" --> EXEC
+    ADAPT <-->|event / command / status| REG
+    REG <-->|IRQ / MMIO| CTRL
+    ADAPT <-->|op handoff| EXEC
+    REG -- "readout snapshot" --> OUT
+    EXEC -- "page data" --> OUT
+    OUT --> HOST
+```
+
+`surrogate_fw` agent와 `PicoRV32 RV32 Core + FW`는 동시에 functional owner가 아니다.
+기본 RTL build에서는 `surrogate_fw` agent가 control agent이고,
+`NAND_CONTROL_RV32` build에서는 `nand_rv32_control_agent`가 PicoRV32 native bus를
+Register Bank `cpu_*` MMIO slot에 연결한다.
+
+## 4. Detailed Integration Boundary View
+
+이 그림은 현재 RTL integration을 이해하기 위한 clock/adapter boundary view다.
+화살표는 주요 ownership과 handoff 방향을 나타낸다. 모든 내부 wire를 표현하지는
+않으며, 점선은 host-facing busy/status mirror처럼 datapath가 아닌 상태 반영 경로를
+의미한다. Adapter block은 특정 clock domain 내부의 단일 기능 block이 아니라
+source/destination endpoint와 CDC-safe handoff를 묶은 role boundary다.
 
 ```mermaid
 flowchart LR
@@ -66,41 +105,31 @@ flowchart LR
 
         subgraph CORECLK["coreclk domain"]
             REG["Register Bank<br/>MMIO-visible state<br/>sticky status / W1C / errors"]
-
-            subgraph CTRL["Control Agent"]
-                SURR["surrogate_fw agent<br/>current PoC owner"]
-                RV["PicoRV32 RV32 Core + C FW<br/>NAND_CONTROL_RV32 option"]
-            end
+            CTRL["Control Agent<br/>surrogate_fw or PicoRV32 RV32 + C FW"]
         end
     end
 
     HOST --> SYNC --> FSM
-    HOST -- "wp_n status" --> PINSTAT
+    HOST -- "wp_n level status" --> PINSTAT
     FSM --> HADAPT
     FSM -- "program data byte stream" --> PB
     FSM -. "fsm busy" .-> RBOUT
     HADAPT --> REG
     HADAPT -. "adapter/reg busy mirror" .-> RBOUT
     PINSTAT --> REG
-    REG -- "clear/control event" --> PBADAPT --> PB
-    PB -- "prog_ready/overflow status" --> PBADAPT --> REG
-    REG <--> SURR
-    REG <--> RV
-    REG --> VPLADAPT --> VPL
-    VPL --> VPLADAPT --> REG
+    REG <-->|PB ctrl/status| PBADAPT
+    PBADAPT <-->|clear / ready| PB
+    REG <-->|IRQ / MMIO| CTRL
+    REG <-->|op cmd/rsp| VPLADAPT
+    VPLADAPT <-->|cmd / done| VPL
     REG --> RO_MIRROR --> OUT
-    VPL <--> PB
-    VPL <--> ARRAY
+    VPL <-->|page data| PB
+    VPL <-->|array access| ARRAY
     PB -- "readout read port" --> OUT
     RO_MIRROR -. "ready/status mirror" .-> RBOUT
     OUT --> HOST
     RBOUT --> HOST
 ```
-
-`surrogate_fw` agent와 `PicoRV32 RV32 Core + FW`는 동시에 functional owner가 아니다.
-기본 RTL build에서는 `surrogate_fw` agent가 control agent이고,
-`NAND_CONTROL_RV32` build에서는 `nand_rv32_control_agent`가 PicoRV32 native bus를
-Register Bank `cpu_*` MMIO slot에 연결한다.
 
 현재 RTL file 구조에서는 `nand_logic_top`이 Decode Frontend, role adapters,
 Page Buffer, Register Bank, VPL executor, control agent를 함께 instance한다. Public
@@ -115,7 +144,7 @@ RV32 agent-local SRAM에 load하고, FW가 IRQ enable MMIO 초기화를 끝냈�
 `rb_n`과 Decode FSM backpressure를 busy 상태로 유지한다. VPL은 기본 빌드에서
 `nand_vpl_executor` clocked executor가 담당한다.
 
-## 4. Architecture Overview
+## 5. Architecture Overview
 
 Top-level architecture는 host-facing decode path, control/status path, data path,
 operation executor를 분리한다. 이 분리는 FW latency, shared resource race,
@@ -178,7 +207,7 @@ FSM과 Host Event Adapter에 있다. 두 책임을 분리해 Decode FSM이 proto
 host-facing flow control에 집중하고, Register Bank가 FW-visible event/IRQ/W1C
 정책을 관리하게 한다.
 
-## 5. Clock Domain Policy
+## 6. Clock Domain Policy
 
 기준 clock 구성은 host-visible timing path와 FW/MMIO control path를 분리한다.
 
@@ -215,7 +244,7 @@ array/page buffer write, busy/done/error state, latency counter, resource handof
 decode 같은 작은 helper logic은 조합회로일 수 있지만, operation start/done과
 array/page buffer commit은 clocked boundary에서 일어난다.
 
-## 6. Block Responsibility
+## 7. Block Responsibility
 
 | Block | 책임 |
 | --- | --- |
@@ -232,7 +261,7 @@ array/page buffer commit은 clocked boundary에서 일어난다.
 | Read Output Mirror Adapter | coreclk Register Bank의 output source/status/Read ID address 정보를 sysclk Read Output Datapath가 사용할 수 있는 snapshot 또는 mirror로 넘긴다. |
 | Read Output Datapath | sysclk domain에서 `re_n` 토글에 맞춰 ID/status/page buffer data를 host로 출력한다. `re_n` to `dq` 경로에 FW/coreclk CDC latency를 직접 넣지 않는다. 세부 RTL 계약은 `nand_read_output_datapath.md`를 따른다. |
 
-## 7. Architecture Decisions and Detail Index
+## 8. Architecture Decisions and Detail Index
 
 Architecture 문서는 기술 선택의 목적과 문서 위치만 정리한다. 세부 field,
 state, timing, checker, CDC rule은 아래 상세 문서를 따른다.
@@ -251,7 +280,7 @@ state, timing, checker, CDC rule은 아래 상세 문서를 따른다.
 | PicoRV32 native bus/MMIO/IRQ 연결 기준 확보 | NAND PicoRV32 integration 문서 참조 | `nand_picorv32.md` |
 | Read/Program/Erase가 cell-level 의미와 어긋나는 문제 방지 | WL/BL/bias 개념 기준과 VPL operation 의미 분리 | `nand_cell_operation.md`, `nand_model_vpl.md` |
 
-## 8. Document Boundary
+## 9. Document Boundary
 
 - Architecture 세부 설명은 이 문서에 길게 복사하지 않는다.
 - command set과 host-visible behavior는 `SIMPLE_ONFI_SDR_behavior_model_reference.md`를 따른다.
@@ -280,6 +309,8 @@ state, timing, checker, CDC rule은 아래 상세 문서를 따른다.
 
 | Version | Description |
 | --- | --- |
+| v0.28 | Mermaid diagram의 왕복 handoff를 단일 양방향 화살표로 정리하고 label을 줄여 가독성을 개선. |
+| v0.27 | 상위 overview diagram과 detailed integration boundary view를 분리하고, control-agent 선택, status mirror, RE# readout path 해석 규칙을 명확히 정리. |
 | v0.26 | 남아 있던 PicoRV32 외부 경로 참조 표현을 NAND repo 내부 vendored core와 `nand_picorv32.md` 기준으로 정정. |
 | v0.25 | PicoRV32/CDC IP vendored source 전환에 맞춰 detail index와 document boundary를 `nand_picorv32.md`, `nand_cdc_ip.md` 중심으로 갱신. |
 | v0.24 | 구현 완료 상태에 맞춰 RV32 integration 표현을 현재 RV32 control-agent integration 기준으로 정리하고 문서 status를 active로 갱신. |
