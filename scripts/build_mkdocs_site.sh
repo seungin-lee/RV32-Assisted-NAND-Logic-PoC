@@ -47,6 +47,45 @@ fi
 
 mkdir -p "${SITE_DIR}"
 
+python3 - "${SITE_DIR}" <<'PY'
+import hashlib
+import pathlib
+import re
+import sys
+
+site_dir = pathlib.Path(sys.argv[1])
+assets = [
+    "assets/stylesheets/mermaid-zoom.css",
+    "assets/javascripts/mermaid-zoom.js",
+]
+
+replacements = []
+for asset in assets:
+    path = site_dir / asset
+    if not path.exists():
+        raise SystemExit(f"ERROR: expected MkDocs asset is missing: {path}")
+
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    replacements.append((asset, f"{asset}?v={digest}"))
+    replacements.append((f"/{asset}", f"/{asset}?v={digest}"))
+
+for html in site_dir.rglob("*.html"):
+    text = html.read_text(encoding="utf-8")
+    next_text = text
+    for old, new in replacements:
+        next_text = re.sub(
+            re.escape(old) + r"(?:\?v=[0-9a-f]+)?",
+            new,
+            next_text,
+        )
+    if next_text != text:
+        html.write_text(next_text, encoding="utf-8")
+
+for asset, versioned in replacements:
+    if not asset.startswith("/"):
+        print(f"[mkdocs] cache-bust: {asset} -> {versioned}")
+PY
+
 cat > "${SITE_DIR}/index.html" <<'HTML'
 <!doctype html>
 <html lang="ko">

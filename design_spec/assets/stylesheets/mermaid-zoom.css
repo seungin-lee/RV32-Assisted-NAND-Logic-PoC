@@ -1,9 +1,20 @@
 .mermaid-rendered {
-  cursor: zoom-in;
   max-width: 100%;
+}
+
+.mermaid-inline-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+
+.mermaid-diagram-body {
   overflow-x: auto;
 }
 
+.mermaid-diagram-body svg,
 .mermaid-rendered svg {
   max-width: none;
 }
@@ -68,6 +79,13 @@
   background: var(--md-accent-fg-color--transparent, rgba(82, 108, 254, 0.12));
 }
 
+.mermaid-zoom-button[aria-pressed="true"],
+.mermaid-zoom-button-active {
+  background: var(--md-accent-fg-color, #526cfe);
+  border-color: var(--md-accent-fg-color, #526cfe);
+  color: var(--md-accent-bg-color, #fff);
+}
+
 .mermaid-zoom-button:focus {
   outline: 2px solid currentColor;
   outline-offset: 2px;
@@ -103,4 +121,97 @@
 .mermaid-zoom-close {
   background: var(--md-accent-fg-color, #526cfe);
   color: var(--md-accent-bg-color, #fff);
+}
+
+.mermaid-highlight-enabled svg {
+  cursor: default;
+}
+
+.mermaid-highlight-enabled svg .node,
+.mermaid-highlight-enabled svg .edgePath,
+.mermaid-highlight-enabled svg .edgeLabel,
+.mermaid-highlight-enabled svg .flowchart-link,
+.mermaid-highlight-enabled svg .transition,
+.mermaid-highlight-enabled svg .state-start,
+.mermaid-highlight-enabled svg .actor,
+.mermaid-highlight-enabled svg .actor-line,
+.mermaid-highlight-enabled svg .messageLine0,
+.mermaid-highlight-enabled svg .messageLine1,
+.mermaid-highlight-enabled svg .messageLine,
+.mermaid-highlight-enabled svg .messageText,
+.mermaid-highlight-enabled svg .note,
+.mermaid-highlight-enabled svg .noteText,
+.mermaid-highlight-enabled svg .loopLine,
+.mermaid-highlight-enabled svg .loopText {
+  cursor: pointer;
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+
+.mermaid-highlight-enabled svg .mermaid-dimmed {
+  opacity: 0.18;
+}
+
+.mermaid-highlight-enabled svg .mermaid-selected,
+.mermaid-highlight-enabled svg .mermaid-connected {
+  opacity: 1 !important;
+}
+
+.mermaid-highlight-enabled svg .edgePath.mermaid-selected path,
+.mermaid-highlight-enabled svg .edgePath.mermaid-connected path,
+.mermaid-highlight-enabled svg .flowchart-link.mermaid-selected,
+.mermaid-highlight-enabled svg .flowchart-link.mermaid-connected,
+.mermaid-highlight-enabled svg .transition.mermaid-selected,
+.mermaid-highlight-enabled svg .transition.mermaid-connected,
+.mermaid-highlight-enabled svg line.mermaid-selected,
+.mermaid-highlight-enabled svg line.mermaid-connected,
+.mermaid-highlight-enabled svg path.mermaid-selected,
+.mermaid-highlight-enabled svg path.mermaid-connected {
+  stroke: var(--md-accent-fg-color, #526cfe) !important;
+  stroke-width: 4px !important;
+}
+
+.mermaid-highlight-enabled svg rect.mermaid-selected,
+.mermaid-highlight-enabled svg rect.mermaid-connected,
+.mermaid-highlight-enabled svg circle.mermaid-selected,
+.mermaid-highlight-enabled svg circle.mermaid-connected,
+.mermaid-highlight-enabled svg polygon.mermaid-selected,
+.mermaid-highlight-enabled svg polygon.mermaid-connected {
+  stroke: var(--md-accent-fg-color, #526cfe) !important;
+  stroke-width: 3px !important;
+}
+
+.mermaid-highlight-enabled svg text.mermaid-selected,
+.mermaid-highlight-enabled svg text.mermaid-connected {
+  fill: var(--md-accent-fg-color, #526cfe) !important;
+  font-weight: 700;
+}
+
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-selected,
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-connected {
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.22));
+}
+
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-selected foreignObject,
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-connected foreignObject,
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-selected div,
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-connected div {
+  outline: 2px solid var(--md-accent-fg-color, #526cfe);
+  outline-offset: 2px;
+}
+
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-selected rect,
+.mermaid-highlight-enabled svg .edgeLabel.mermaid-connected rect {
+  fill: var(--md-default-bg-color, #fff) !important;
+  stroke: var(--md-accent-fg-color, #526cfe) !important;
+  stroke-width: 2px !important;
+}
+
+.mermaid-highlight-enabled svg .node.mermaid-selected rect,
+.mermaid-highlight-enabled svg .node.mermaid-selected polygon,
+.mermaid-highlight-enabled svg .node.mermaid-selected circle,
+.mermaid-highlight-enabled svg .node.mermaid-connected rect,
+.mermaid-highlight-enabled svg .node.mermaid-connected polygon,
+.mermaid-highlight-enabled svg .node.mermaid-connected circle {
+  stroke: var(--md-accent-fg-color, #526cfe) !important;
+  stroke-width: 3px !important;
 }
