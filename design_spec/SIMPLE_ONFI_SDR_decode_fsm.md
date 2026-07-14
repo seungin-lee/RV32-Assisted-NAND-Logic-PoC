@@ -1,5 +1,5 @@
 # SIMPLE ONFI SDR Decode FSM Design
-Version: v0.18
+Version: v0.19
 
 본 문서는 `SIMPLE_ONFI_SDR_behavior_model_reference.md`의 지원 command를 NAND
 Model 내부에서 해석하기 위한 합성 가능한 decode FSM 설계 기준을 정의한다.
@@ -44,7 +44,7 @@ Decode FSM은 아래 sub-block으로 나눈다.
 
 ```mermaid
 flowchart LR
-    PIN["Host Pins<br/>cle ale ce_n we_n re_n wp_n dq"] --> SYNC["Pin Sync / Edge Detect"]
+    PIN["Decode Pins<br/>cle ale ce_n we_n re_n dq"] --> SYNC["Pin Sync / Edge Detect"]
     SYNC --> CLASS["Bus Cycle Classifier"]
     CLASS --> SEQ["Command Sequencer FSM"]
     CLASS --> PDS["Program Data Streamer"]
@@ -60,11 +60,11 @@ flowchart LR
 
 | Block | 책임 |
 | --- | --- |
-| Pin Sync / Edge Detect | host pin을 `sys_clk`에 동기화하고 `we_rise`, `re_fall`, `re_rise`를 만든다. |
-| Bus Cycle Classifier | `ce_n`, `cle`, `ale`, edge를 기준으로 command/address/data/read event를 분류한다. |
+| Pin Sync / Edge Detect | decode에 필요한 host pin을 `sys_clk`에 동기화하고 `we_rise`, `re_fall`, `re_rise`를 만든다. `re_fall/re_rise`는 Read Output Datapath용으로 frontend 밖에 노출한다. |
+| Bus Cycle Classifier | `ce_n`, `cle`, `ale`, `we_rise`를 기준으로 command/address/data input event를 분류한다. |
 | Command Sequencer FSM | command context, address count, confirm command 대기, decode event 생성만 담당한다. |
 | Program Data Streamer | Program data byte를 같은 sysclk domain의 Page Buffer write valid/ready stream으로 전달하고 count를 유지한다. |
-| Timing / Protocol Checker | `tWC`, `tADL`, `tWHR`, invalid bus, unexpected phase 같은 violation을 sticky error로 남긴다. |
+| Timing / Protocol Checker | `tWC`, `tADL`, invalid bus, unexpected phase 같은 write-side violation을 sticky error로 남긴다. read-output timing guard는 Read Output Datapath/TB 계약을 따른다. |
 | Host Event Adapter | decode event payload를 Register Bank mailbox에 atomic commit한다. |
 
 이 분해의 의도는 Command Sequencer FSM 상태 수를 command 개수에 비례해 늘리지
@@ -76,7 +76,7 @@ command table로 처리한다.
 권장 RTL 분할:
 
 ```text
-raw ONFI pins
+decode-related ONFI pins
   -> pin_sync_edge_detect
   -> frontend synchronized pin-level handoff
   -> onfi_sdr_decode_fsm
@@ -84,10 +84,12 @@ raw ONFI pins
      -> Page Buffer write path
 ```
 
-`pin_sync_edge_detect`는 ONFI 의미를 모르는 범용 IP다. `cle/ale/ce_n/we_n/re_n`
-조합으로 command/address/data event를 만드는 일은 Decode FSM 내부 Bus Cycle
-Classifier가 담당한다. Frontend wrapper는 sync된 pin bundle과 edge pulse를
-기계적으로 연결하는 integration top으로 둔다.
+`pin_sync_edge_detect`는 ONFI 의미를 모르는 범용 IP다. `cle/ale/ce_n/we_n/dq`
+조합으로 command/address/data input event를 만드는 일은 Decode FSM 내부 Bus Cycle
+Classifier가 담당한다. `re_n` edge는 frontend가 동기화해 Read Output Datapath로
+전달하며, Decode FSM core input으로 넘기지 않는다. `wp_n`은 command decode event가
+아니라 live pin status이므로 Host Pin Status Adapter가 Register Bank domain으로
+mirror한다.
 
 Decode FSM core 권장 port 형태:
 
@@ -100,10 +102,7 @@ module onfi_sdr_decode_fsm (
     input  wire       cle_sync_i,
     input  wire       ale_sync_i,
     input  wire       ce_n_sync_i,
-    input  wire       wp_n_sync_i,
     input  wire       we_rise_i,
-    input  wire       re_fall_i,
-    input  wire       re_rise_i,
 
     input  wire       host_busy_i,
     input  wire       decode_event_ready_i,
@@ -120,10 +119,6 @@ module onfi_sdr_decode_fsm (
     output reg  [2:0] addr_count_o,
     output reg [12:0] prog_data_count_o,
 
-    output reg        mode_status_o,
-    output reg        mode_id_o,
-    output reg        mode_read_o,
-
     output reg        prog_data_valid_o,
     output reg  [7:0] prog_data_o,
 
@@ -134,9 +129,9 @@ module onfi_sdr_decode_fsm (
 );
 ```
 
-`dq_sync_i`, `cle_sync_i`, `ale_sync_i`, `ce_n_sync_i`, `wp_n_sync_i`는 `sys_clk`
-domain으로 동기화된 pin-level signal이다. `we_rise_i`, `re_fall_i`, `re_rise_i`는
-동일 domain의 1-cycle edge pulse다. Decode FSM은 `we_rise_i` cycle의 synchronized
+`dq_sync_i`, `cle_sync_i`, `ale_sync_i`, `ce_n_sync_i`는 `sys_clk`
+domain으로 동기화된 pin-level signal이다. `we_rise_i`는 동일 domain의 1-cycle
+write edge pulse다. Decode FSM은 `we_rise_i` cycle의 synchronized
 `cle/ale/ce_n/dq` 조합을 보고 내부 `cmd_event`, `addr_event`, `data_in_event`,
 `invalid_bus_event`를 만든다.
 
@@ -147,8 +142,6 @@ domain으로 동기화된 pin-level signal이다. `we_rise_i`, `re_fall_i`, `re_
 
 ## 4. Bus Cycle Classifier
 
-`ce_n_sync == 0`이고 `we_rise == 1`인 cycle에서 write-side bus event를 만든다.
-
 | 조건 | Event | 의미 |
 | --- | --- | --- |
 | `cle=1`, `ale=0` | `cmd_event` | `dq_in`을 command byte로 latch |
@@ -157,8 +150,8 @@ domain으로 동기화된 pin-level signal이다. `we_rise_i`, `re_fall_i`, `re_
 | `cle=1`, `ale=1` | `invalid_bus_event` | protocol error |
 
 `ce_n_sync == 1`이면 write event는 무시한다. Read output은 별도 datapath가
-`re_fall/re_rise`를 사용하며, decode FSM는 mode select와 checker context만
-제공한다.
+frontend의 `re_fall/re_rise` pulse와 Register Bank의 `REG_READOUT_CTRL` mirror를
+사용한다. Decode FSM은 readout source mode를 직접 출력하지 않는다.
 
 ## 5. Command Table
 
@@ -212,7 +205,7 @@ Decode FSM의 기본 구현 타입이다.
 | Sub-block | 구현 타입 | 근거 |
 | --- | --- | --- |
 | Bus Cycle Classifier | combinational event decoder | sync된 `cle/ale/ce_n/we_rise/dq`를 command/address/data event로만 분류하며 state를 갖지 않는다. |
-| Command Sequencer | binary-encoded registered-output hybrid FSM | state transition은 input event를 보지만, event payload와 mode output은 clock edge에서 register한다. |
+| Command Sequencer | binary-encoded registered-output hybrid FSM | state transition은 input event를 보지만, event payload는 clock edge에서 register한다. |
 | Program Data Streamer | valid/ready hold register 기반 mini-FSM | 별도 state encoding 대신 `prog_data_valid_q`가 DATA_HOLD 상태를 표현한다. count는 accept 때만 증가한다. |
 | Timing / Protocol Checker | error request producer | transition owner가 아니며, violation을 우선순위가 명시된 error event로 변환한다. |
 | Host Event Handoff | registered valid/payload hold | adapter ready 전까지 payload를 안정적으로 유지한다. |
@@ -240,7 +233,7 @@ RTL 구조:
 - combinational block은 default-hold 후 state별 변경점만 override한다.
 - helper task가 state/output register를 직접 갱신하지 않는다.
 - 외부로 나가는 `decode_event_valid_o`, payload, `prog_data_valid_o`,
-  `prog_data_o`, mode flag는 registered output이다.
+  `prog_data_o`는 registered output이다.
 - Mealy 성격은 next-state/next-registered-output 선택에만 사용하고,
   host pin input을 외부 combinational output으로 직접 연결하지 않는다.
 
@@ -339,7 +332,7 @@ sticky status로 남겨 debug와 검증을 쉽게 한다.
 | `tWC` | `we_rise` 간격이 `T_WC_CYCLES`보다 작으면 `ERR_TWC` |
 | `tRC` | read output block에서 `re` cycle 간격이 `T_RC_CYCLES`보다 작으면 `ERR_TRC` |
 | `tADL` | Program address 완료 후 `T_ADL_CYCLES` 전 data input이면 `ERR_TADL` |
-| `tWHR` | Read ID/Status 후 `T_WHR_CYCLES` 전 read output이면 `ERR_TWHR` |
+| read output guard | Read ID/Status/Page command 이후 host `re_n` timing은 Read Output Datapath TB와 host traffic scenario에서 검증 |
 | busy read | Busy 완료 전 page read output 요청이면 `ERR_READ_WHILE_BUSY` |
 
 Debug/verification 설정에서는 `CHECK_TIMING_EN` parameter로 timing checker를 끌 수
@@ -386,15 +379,14 @@ Block Erase는 `row_addr = addr0 + (addr1 << 8) + (addr2 << 16)`로 해석한다
 
 Decode FSM은 `dq`를 직접 drive하지 않는다.
 
-Mode select:
+Decode FSM이 만드는 것은 `decoded_op_o`, command/address snapshot,
+program data count, protocol error를 포함한 transaction event다.
 
-- `mode_id_o`: Read ID output datapath 선택
-- `mode_status_o`: Read Status output datapath 선택
-- `mode_read_o`: Page Buffer read output datapath 선택
-
-Read Output Datapath는 `re_fall`에서 mode와 Register Bank/Page Buffer status를
-보고 `dq_out`을 갱신한다. `mode_read_o`가 set되어도 Page Buffer valid 또는
-device ready 조건은 별도로 확인해야 한다.
+Read output source 선택은 Control Agent가 host event IRQ를 처리한 뒤
+`REG_READOUT_CTRL`을 쓰는 방식으로 수행한다. Register Bank는 이 값을 Read Output
+Mirror Adapter를 통해 sysclk domain으로 mirror하고, Read Output Datapath는
+frontend가 제공하는 `re_fall/re_rise` pulse와 mirrored source/status/Page Buffer
+data를 사용해 `dq_out`/`dq_oe`를 갱신한다.
 
 ## 12. Verification Focus
 
@@ -409,7 +401,7 @@ device ready 조건은 별도로 확인해야 한다.
 | Program streamer | data byte가 ready handshake 때만 count/commit되는지 |
 | Busy exception | Busy 중 `70h`, `FFh`만 허용되는지 |
 | Error policy | invalid bus, bad confirm, unexpected phase가 sticky error로 남는지 |
-| Timing checker | `tWC`, `tADL`, `tWHR` 위반을 잡는지 |
+| Timing checker | `tWC`, `tADL` 같은 write-side timing/protocol 위반을 잡는지 |
 
 필수 assertion 예:
 
@@ -433,6 +425,7 @@ assert property (@(posedge sys_clk) disable iff (!sys_rst_n)
 
 | Version | 변경사항 |
 | --- | --- |
+| v0.19 | Decode FSM core에서 unused `wp_n`/`re_n` input과 legacy `mode_*` output을 제거하고, readout source 선택이 Register Bank `REG_READOUT_CTRL`/Read Output Datapath 계약임을 명확히 정리. |
 | v0.18 | 현재 Decode FSM debug/status port 예시를 보강하고 program data hold 설명을 Page Buffer write path accept 기준으로 정정. |
 | v0.17 | Adapter/CDC/Register Bank handoff 참조를 NAND-owned `nand_cdc_ip.md`와 `nand_register_bank.md` 기준으로 갱신. |
 | v0.16 | Timing checker parameter 설명을 현재 debug/verification 설정 기준으로 정리. |

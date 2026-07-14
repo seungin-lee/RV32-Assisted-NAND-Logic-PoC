@@ -13,8 +13,10 @@
 // event hold, address snapshot, program data ready/valid behavior, and busy
 // illegal command handling without pin synchronization, Register Bank, or Page
 // Buffer implementation.
-// File version: v0.3
+// File version: v0.4
 // Revision history:
+// - v0.4: Align with Decode FSM port cleanup; verify read decode
+//   through decoded_op instead of legacy mode outputs.
 // - v0.3: Use shared nand_parameters.vh for sysclk and
 //   address-cycle constants.
 // - v0.2: Updated for synchronized pin-level input interface.
@@ -32,10 +34,7 @@ module tb_onfi_sdr_decode_fsm;
     reg        cle_sync;
     reg        ale_sync;
     reg        ce_n_sync;
-    reg        wp_n_sync;
     reg        we_rise;
-    reg        re_fall;
-    reg        re_rise;
     reg        host_busy;
     reg        decode_event_ready;
     reg        prog_data_ready;
@@ -50,9 +49,6 @@ module tb_onfi_sdr_decode_fsm;
     wire [7:0] addr4;
     wire [2:0] addr_count;
     wire [12:0] prog_data_count;
-    wire       mode_status;
-    wire       mode_id;
-    wire       mode_read;
     wire       prog_data_valid;
     wire [7:0] prog_data;
     wire       protocol_error;
@@ -69,10 +65,7 @@ module tb_onfi_sdr_decode_fsm;
         .cle_sync_i(cle_sync),
         .ale_sync_i(ale_sync),
         .ce_n_sync_i(ce_n_sync),
-        .wp_n_sync_i(wp_n_sync),
         .we_rise_i(we_rise),
-        .re_fall_i(re_fall),
-        .re_rise_i(re_rise),
         .host_busy_i(host_busy),
         .decode_event_ready_i(decode_event_ready),
         .prog_data_ready_i(prog_data_ready),
@@ -86,9 +79,6 @@ module tb_onfi_sdr_decode_fsm;
         .addr4_o(addr4),
         .addr_count_o(addr_count),
         .prog_data_count_o(prog_data_count),
-        .mode_status_o(mode_status),
-        .mode_id_o(mode_id),
-        .mode_read_o(mode_read),
         .prog_data_valid_o(prog_data_valid),
         .prog_data_o(prog_data),
         .protocol_error_o(protocol_error),
@@ -165,8 +155,6 @@ module tb_onfi_sdr_decode_fsm;
             ale_sync = 1'b0;
             ce_n_sync = 1'b0;
             we_rise = 1'b0;
-            re_fall = 1'b0;
-            re_rise = 1'b0;
         end
     endtask
 
@@ -238,7 +226,6 @@ module tb_onfi_sdr_decode_fsm;
         sys_clk = 1'b0;
         sys_rst_n = 1'b0;
         dq_sync = 8'h00;
-        wp_n_sync = 1'b1;
         clear_bus_cycle();
         host_busy = 1'b0;
         decode_event_ready = 1'b0;
@@ -253,7 +240,6 @@ module tb_onfi_sdr_decode_fsm;
         wait_event_valid(20);
         check_eq4(decoded_op, `ONFI_OP_READ_STATUS, "70h decoded op");
         check_eq8(cmd, 8'h70, "70h command payload");
-        check_true(mode_status, "status mode asserted");
         wait_sys_cycles(3);
         check_true(decode_event_valid, "event held while adapter not ready");
         accept_event();
@@ -265,7 +251,6 @@ module tb_onfi_sdr_decode_fsm;
         check_eq4(decoded_op, `ONFI_OP_READ_ID, "90h decoded op");
         check_eq8(addr0, 8'h20, "Read ID address snapshot");
         check_true(addr_count == READ_ID_ADDR_CYCLES, "Read ID address count");
-        check_true(mode_id, "ID mode asserted");
         accept_event();
 
         pulse_cmd(8'h00);
@@ -282,7 +267,6 @@ module tb_onfi_sdr_decode_fsm;
         check_eq8(addr1, 8'h12, "Read Page addr1");
         check_eq8(addr2, 8'h4a, "Read Page addr2");
         check_true(addr_count == PAGE_ADDR_CYCLES, "Read Page address count");
-        check_true(mode_read, "page read mode asserted");
         accept_event();
 
         pulse_cmd(8'h80);

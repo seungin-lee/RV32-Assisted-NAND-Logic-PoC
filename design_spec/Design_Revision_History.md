@@ -1,5 +1,5 @@
 # NAND Design Revision History
-Version: v0.45
+Version: v0.46
 Status: active
 
 이 문서는 상세 설계 설명이 아니라 top/block/file revision 추적용이다. 세부
@@ -9,6 +9,7 @@ architecture와 계약은 `Architecture.md` 및 각 설계 문서를 따른다.
 
 | Top Rev | Scope | Summary | Verification |
 | --- | --- | --- | --- |
+| D0.44 | Decode FSM interface ownership cleanup | Decode FSM core에서 unused `wp_n`/`re_n` input과 legacy `mode_*` output을 제거하고, `wp_n`은 Host Pin Status Adapter, `re_n` edge는 Read Output Datapath, readout source는 Register Bank `REG_READOUT_CTRL` 경로가 소유한다는 현재 RTL 계약으로 문서/TB를 정렬 | `make sim TB=tb_onfi_sdr_decode_fsm`, `make sim TB=tb_onfi_sdr_decode_frontend`, `make top`, `make sim`, `bash scripts/build_mkdocs_site.sh`, `git diff --check` |
 | D0.43 | Current RTL contract audit corrections | current RTL/FW를 기준으로 남아 있던 stale PicoRV32 routing 표현, FW MMIO offset 누락, VPL optional checker 과잉 표현, Decode FSM Page Buffer accept 표현을 정정 | `git diff --check`, date-removal rg check, `make fw`, `make top`, `make top-rv32`, all `make sim TB=...` TBs, `make sim-rv32`, `make cdc-lint`, `make cdc-formal`, `make cdc-formal-sby` |
 | D0.42 | Revision history date removal | 공개 문서와 NAND-owned RTL/TB/FW/script/formal file header의 revision history에서 날짜 column/value를 제거하고, 추적 기준을 version/revision id 중심으로 정리. `tools/` 외부 tool submodule source는 수정하지 않음 | date-removal rg check, `bash -n scripts/install_deps.sh`, `make top`, `git diff --check` |
 | D0.41 | Makefile alias removal | 기존 `test-*`, `full-sim`, `check-*`, `build-*` 호환 alias target을 제거하고 현재 실행 surface를 `sim`, `sim-rv32`, `fw`, `top`, `top-rv32`, `cdc-lint`, `cdc-formal`, `cdc-formal-sby`, `clean`으로 축소. current index, CDC/File/host traffic/PicoRV32 문서, setup script, TB 로그의 실행 명령을 새 target 이름으로 갱신 | `make sim TB=tb_cdc_valid_ack`, `make sim TB=tb/tb_pin_sync_edge_detect.v`, `make sim TB=tb_picorv32_core_ez`, `make fw`, `make top`, `make top-rv32`, `make cdc-lint`, `make cdc-formal`, `make cdc-formal-sby`, `make sim`, `make sim-rv32`, `bash -n scripts/install_deps.sh`, `git diff --check` |
@@ -57,6 +58,16 @@ architecture와 계약은 `Architecture.md` 및 각 설계 문서를 따른다.
 
 | Top Rev | File | Block | File Version | Related Design Doc / Version | Change Summary | Verification |
 | --- | --- | --- | --- | --- | --- | --- |
+| D0.44 | `nand_model/onfi_sdr_decode_fsm.v` | Decode FSM | v0.5 | `SIMPLE_ONFI_SDR_decode_fsm.md` v0.19 | unused `wp_n_sync_i`, `re_fall_i`, `re_rise_i` input과 legacy `mode_status_o`/`mode_id_o`/`mode_read_o` output을 제거하고 transaction event/program stream output만 유지 | D0.44 regression subset |
+| D0.44 | `nand_model/onfi_sdr_decode_frontend.v` | Decode Frontend | v0.7 | `SIMPLE_ONFI_SDR_decode_fsm.md` v0.19, `nand_read_output_datapath.md` v0.4 | Decode FSM core에는 write-side synchronized inputs만 넘기고, synchronized `re_fall_o`/`re_rise_o`는 Read Output Datapath용 frontend output으로 유지 | D0.44 regression subset |
+| D0.44 | `nand_model/nand_logic_top.v` | NAND Logic Top | v0.14 | `Architecture.md` v0.29 | unused Decode Frontend mode wires를 제거하고 current readout path가 `REG_READOUT_CTRL` mirror와 Read Output Datapath로 닫히는 구조를 유지 | D0.44 regression subset |
+| D0.44 | `tb/tb_onfi_sdr_decode_fsm.v` | Decode FSM TB | v0.4 | `SIMPLE_ONFI_SDR_decode_fsm.md` v0.19 | legacy mode checks를 제거하고 `decoded_op`/payload/event hold/program stream check 중심으로 정렬 | D0.44 regression subset |
+| D0.44 | `tb/tb_onfi_sdr_decode_frontend.v` | Decode Frontend TB | v0.10 | `SIMPLE_ONFI_SDR_decode_fsm.md` v0.19, `nand_adapter_contracts.md` v0.17 | frontend `wp_n`/mode port 제거에 맞춰 host traffic scenario checks를 decoded event와 Page Buffer stream 기준으로 유지 | D0.44 regression subset |
+| D0.44 | `tb/tb_nand_logic_top_e2e.v` | NAND Logic Top Full-Sim TB | v0.7 | `Architecture.md` v0.29, `host_tb_traffice_scenario.md` v0.6 | legacy Decode Frontend mode hierarchical reference를 제거하고 readout behavior는 `REG_READOUT_CTRL`/DQ/RB_N 관측으로 검증 | D0.44 regression subset |
+| D0.44 | `design_spec/SIMPLE_ONFI_SDR_decode_fsm.md` | Decode FSM design spec | v0.19 | `Architecture.md` v0.29, `nand_read_output_datapath.md` v0.4 | Decode FSM core port contract와 Output Datapath 분리 설명을 current RTL ownership에 맞게 정정 | documentation review, D0.44 regression subset |
+| D0.44 | `design_spec/Architecture.md` | Architecture | v0.29 | `SIMPLE_ONFI_SDR_decode_fsm.md` v0.19 | Pin Sync/Decode FSM/Read Output/Host Pin Status Adapter 책임 분리를 `wp_n`/`re_n`/readout source ownership 기준으로 명확화 | documentation review |
+| D0.44 | `design_spec/File_Index.md` | File index | v0.33 | `AGENTS.md` v0.12 | Decode FSM/Frontend port cleanup에 맞춰 RTL/TB 역할 설명을 갱신 | documentation review |
+| D0.44 | `design_spec/Design_Revision_History.md` | Revision history | v0.46 | `AGENTS.md` v0.12 | Decode FSM interface ownership cleanup revision 기록 추가 | documentation review, D0.44 regression subset |
 | D0.43 | `fw/nand_mmio.h` | RV32 FW MMIO header | v0.2 | `nand_register_bank.md` v0.9 | `REG_PAGE_BYTES`와 `REG_OP_LATENCY` define을 추가해 public Register Bank offset map과 정렬 | D0.43 regression suite |
 | D0.43 | `nand_model/nand_surrogate_fw_agent.v` | Surrogate FW agent | v0.2 | `nand_control_fw.md` v0.15 | RV32 path 구현 완료 상태에 맞춰 surrogate FW contract를 동일 MMIO/IRQ control-agent contract 표현으로 정정 | D0.43 regression suite |
 | D0.43 | `design_spec/Architecture.md` | Architecture | v0.26 | `nand_picorv32.md` v0.4 | 남아 있던 PicoRV32 외부 경로 참조 표현을 NAND repo 내부 vendored core와 `nand_picorv32.md` routing 기준으로 정정 | documentation review, D0.43 regression suite |

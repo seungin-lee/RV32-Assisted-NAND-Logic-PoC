@@ -1,5 +1,5 @@
 # NAND Model Architecture
-Version: v0.28
+Version: v0.29
 Status: active
 
 ## 1. 문서 목적
@@ -248,8 +248,8 @@ array/page buffer commit은 clocked boundary에서 일어난다.
 
 | Block | 책임 |
 | --- | --- |
-| Host Pin Sync / Edge Detect | 비동기 ONFI pin을 모델 clock에 맞춰 sample하고 `we_n`, `re_n` edge event를 만든다. |
-| Decode FSM | command/address/data phase를 해석해 host transaction event를 만들고, program data byte stream은 같은 sysclk domain의 Page Buffer write path로 직접 전달한다. 내부 state 구성과 세부 전환은 Decode FSM 설계 문서를 따른다. |
+| Host Pin Sync / Edge Detect | Decode path에 필요한 ONFI pin을 모델 clock에 맞춰 sample하고 `we_n`, `re_n` edge pulse를 만든다. `we_n` edge는 Decode FSM write-side bus classifier가 사용하고, `re_n` edge는 Read Output Datapath가 사용한다. |
+| Decode FSM | command/address/data input phase를 해석해 host transaction event를 만들고, program data byte stream은 같은 sysclk domain의 Page Buffer write path로 직접 전달한다. `wp_n` status와 readout source selection은 각각 Host Pin Status Adapter와 Register Bank/Read Output path 책임이다. 내부 state 구성과 세부 전환은 Decode FSM 설계 문서를 따른다. |
 | Host Event Adapter | sysclk domain의 decoded event와 address snapshot을 Register Bank coreclk domain으로 CDC-safe하게 atomic commit한다. busy/backpressure, event valid/ready, payload stability, Register Bank handoff 기준을 관리하고 Register Bank busy mirror를 sysclk host-facing lockout으로 되돌린다. |
 | Host Pin Status Adapter | host-facing `wp_n` 같은 pin status를 coreclk Register Bank가 사용할 수 있는 status mirror로 넘긴다. Top public port에는 physical host pin만 남기고, core-domain 보호 상태 생성은 adapter 내부 책임으로 둔다. |
 | Register Bank | FW/Core가 보는 MMIO state, decoded event mailbox, opcode/target/status/error/IRQ, sticky/W1C side effect를 관리한다. Host Event Adapter handoff 이후 Control Agent가 다음 작업을 시작하는 기준점이다. |
@@ -309,6 +309,7 @@ state, timing, checker, CDC rule은 아래 상세 문서를 따른다.
 
 | Version | Description |
 | --- | --- |
+| v0.29 | Decode FSM core에서 `wp_n`/`re_n`/readout mode ownership을 제거한 RTL 계약에 맞춰 Pin Sync, Decode FSM, Read Output 책임 분리를 명확히 정리. |
 | v0.28 | Mermaid diagram의 왕복 handoff를 단일 양방향 화살표로 정리하고 label을 줄여 가독성을 개선. |
 | v0.27 | 상위 overview diagram과 detailed integration boundary view를 분리하고, control-agent 선택, status mirror, RE# readout path 해석 규칙을 명확히 정리. |
 | v0.26 | 남아 있던 PicoRV32 외부 경로 참조 표현을 NAND repo 내부 vendored core와 `nand_picorv32.md` 기준으로 정정. |

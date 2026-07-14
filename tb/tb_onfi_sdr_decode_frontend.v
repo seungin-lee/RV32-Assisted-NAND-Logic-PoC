@@ -19,8 +19,10 @@
 // instances.
 // Register Bank IRQ/W1C, VPL, and read-output data drive are outside this test
 // scope.
-// File version: v0.9
+// File version: v0.10
 // Revision history:
+// - v0.10: Align with Decode Frontend port cleanup; read scenarios
+//   verify decoded events instead of legacy mode outputs.
 // - v0.9: Tie off exported frontend RE# edge outputs and Page
 //   Buffer Read Output direct read ports.
 // - v0.8: Tie off new nand_page_buffer VPL direct ports; Decode
@@ -58,7 +60,6 @@ module tb_onfi_sdr_decode_frontend;
     reg        ce_n;
     reg        we_n;
     reg        re_n;
-    reg        wp_n;
     reg        host_busy;
     wire       decode_event_valid;
     wire       decode_event_ready;
@@ -99,9 +100,6 @@ module tb_onfi_sdr_decode_frontend;
     wire       pb_prog_ready;
     wire       pb_overflow;
     wire       pb_busy;
-    wire       mode_status;
-    wire       mode_id;
-    wire       mode_read;
     wire       fsm_busy;
     wire       adapter_busy;
     wire [2:0] seq_state;
@@ -131,7 +129,6 @@ module tb_onfi_sdr_decode_frontend;
         .ce_n(ce_n),
         .we_n(we_n),
         .re_n(re_n),
-        .wp_n(wp_n),
         .host_busy_i(host_busy),
         .decode_event_valid_o(decode_event_valid),
         .decode_event_ready_i(decode_event_ready),
@@ -149,9 +146,6 @@ module tb_onfi_sdr_decode_frontend;
         .prog_data_valid_o(prog_data_valid),
         .prog_data_ready_i(prog_data_ready),
         .prog_data_o(prog_data),
-        .mode_status_o(mode_status),
-        .mode_id_o(mode_id),
-        .mode_read_o(mode_read),
         .fsm_busy_o(fsm_busy),
         .re_fall_o(),
         .re_rise_o(),
@@ -608,7 +602,6 @@ module tb_onfi_sdr_decode_frontend;
         ce_n = 1'b0;
         we_n = 1'b1;
         re_n = 1'b1;
-        wp_n = 1'b1;
         host_busy = 1'b0;
         reg_event_ready = 1'b0;
         pb_clear = 1'b0;
@@ -637,7 +630,7 @@ module tb_onfi_sdr_decode_frontend;
         ack_reg_event();
 
         scenario_begin("Read ID 90h + addr 00h");
-        $display("[EXPECT] Read ID addr 00h produces OP_READ_ID, addr0=00h, mode_id=1");
+        $display("[EXPECT] Read ID addr 00h produces OP_READ_ID with addr0=00h");
         host_cmd(8'h90);
         host_addr(8'h00);
         wait_sys_cycles(T_WHR_CYCLES);
@@ -646,7 +639,6 @@ module tb_onfi_sdr_decode_frontend;
         expect_event_common("Read ID 00h", `ONFI_OP_READ_ID, 8'h90, 3'd1, 13'd0,
                             1'b0, `ONFI_ERR_NONE);
         check_eq8(reg_addr0, 8'h00, "Read ID 00h address snapshot");
-        check_true(mode_id, "Read ID mode select asserted");
         ack_reg_event();
 
         scenario_begin("Read ID 90h + addr 20h");
@@ -659,7 +651,6 @@ module tb_onfi_sdr_decode_frontend;
         expect_event_common("Read ID 20h", `ONFI_OP_READ_ID, 8'h90, 3'd1, 13'd0,
                             1'b0, `ONFI_ERR_NONE);
         check_eq8(reg_addr0, 8'h20, "Read ID 20h address snapshot");
-        check_true(mode_id, "Read ID mode select asserted");
         ack_reg_event();
 
         scenario_begin("Page Program 80h + 5addr + 16 data + 10h");
@@ -703,7 +694,7 @@ module tb_onfi_sdr_decode_frontend;
         ack_reg_event();
 
         scenario_begin("Read Status 70h after Program");
-        $display("[EXPECT] Read Status command is decoded even after Program and mode_status=1");
+        $display("[EXPECT] Read Status command is decoded even after Program");
         host_cmd(8'h70);
         wait_sys_cycles(T_WHR_CYCLES);
         host_read_strobe();
@@ -711,11 +702,10 @@ module tb_onfi_sdr_decode_frontend;
         expect_event_common("Read Status after Program", `ONFI_OP_READ_STATUS,
                             8'h70, 3'd0, PROGRAM_BYTES[12:0],
                             1'b0, `ONFI_ERR_NONE);
-        check_true(mode_status, "Read Status mode select asserted");
         ack_reg_event();
 
         scenario_begin("Read Page 00h + 5addr + 30h");
-        $display("[EXPECT] Read Page confirm produces OP_READ_PAGE, address snapshot, mode_read=1");
+        $display("[EXPECT] Read Page confirm produces OP_READ_PAGE with address snapshot");
         host_cmd(8'h00);
         host_addr(page_c1);
         host_addr(page_c2);
@@ -734,7 +724,6 @@ module tb_onfi_sdr_decode_frontend;
         check_eq8(reg_addr2, page_r1, "Read Page R1 snapshot");
         check_eq8(reg_addr3, page_r2, "Read Page R2 snapshot");
         check_eq8(reg_addr4, page_r3, "Read Page R3 snapshot");
-        check_true(mode_read, "Read Page mode select asserted");
         ack_reg_event();
 
         scenario_begin("Block Erase 60h + 3row + D0h");
@@ -761,7 +750,6 @@ module tb_onfi_sdr_decode_frontend;
         expect_event_common("Read Status after Erase", `ONFI_OP_READ_STATUS,
                             8'h70, 3'd0, PROGRAM_BYTES[12:0],
                             1'b0, `ONFI_ERR_NONE);
-        check_true(mode_status, "Read Status mode select asserted after erase");
         ack_reg_event();
 
         scenario_begin("Read Page 00h + 5addr + 30h after Erase");
@@ -779,7 +767,6 @@ module tb_onfi_sdr_decode_frontend;
         expect_event_common("Read Page after Erase", `ONFI_OP_READ_PAGE,
                             8'h30, PAGE_ADDR_CYCLES, PROGRAM_BYTES[12:0],
                             1'b0, `ONFI_ERR_NONE);
-        check_true(mode_read, "Read Page mode select asserted after erase");
         ack_reg_event();
 
         scenario_begin("Busy illegal command policy");

@@ -12,8 +12,10 @@
 // Block contract: Drives the canonical ONFI SDR Mode 0 host traffic scenario
 // into the integrated top and checks Decode -> Register Bank -> Surrogate FW
 // -> VPL -> Page Buffer -> Read Output behavior.
-// File version: v0.6
+// File version: v0.7
 // Revision history:
+// - v0.7: Remove legacy Decode Frontend mode hierarchical
+//   references; readout behavior is checked through REG_READOUT_CTRL and DQ.
 // - v0.6: Update runtime command hint for the compact Makefile
 //   surface: make sim / make sim-rv32.
 // - v0.5: Treat RB_N as part of top-ready detection so RV32 FW
@@ -82,9 +84,6 @@ module tb_nand_logic_top_e2e;
     wire       readout_ptr_reset_pulse;
     wire [12:0] readout_ptr;
     wire       readout_busy;
-    wire       mode_status;
-    wire       mode_id;
-    wire       mode_read;
     wire       fsm_busy;
     wire       adapter_busy;
     wire [2:0] seq_state;
@@ -131,9 +130,6 @@ module tb_nand_logic_top_e2e;
     assign readout_ptr_reset_pulse = u_top.readout_ptr_reset_pulse;
     assign readout_ptr = u_top.readout_ptr;
     assign readout_busy = u_top.readout_busy;
-    assign mode_status = u_top.mode_status;
-    assign mode_id = u_top.mode_id;
-    assign mode_read = u_top.mode_read;
     assign fsm_busy = u_top.fsm_busy;
     assign adapter_busy = u_top.adapter_busy;
     assign seq_state = u_top.seq_state;

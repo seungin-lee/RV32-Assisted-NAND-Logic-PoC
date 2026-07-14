@@ -17,8 +17,10 @@
 // bus is driven by nand_surrogate_fw_agent. NAND_CONTROL_RV32 selects the
 // PicoRV32-based control agent and keeps host traffic back-pressured until FW
 // initialization reaches the IRQ-enable step.
-// File version: v0.13
+// File version: v0.14
 // Revision history:
+// - v0.14: Remove unused Decode Frontend mode wires and keep RE#
+//   edge ownership on the Read Output Datapath path.
 // - v0.13: Gate host-ready/backpressure with control-agent ready
 //   so RV32 FW can initialize IRQ handling before the first host command.
 // - v0.12: Replace NAND_CONTROL_RV32 tie-off with
@@ -204,9 +206,6 @@ module nand_logic_top #(
     wire        readout_ptr_reset_pulse;
     wire [12:0] readout_ptr;
     wire        readout_busy;
-    wire        mode_status;
-    wire        mode_id;
-    wire        mode_read;
     wire        fsm_busy;
     wire [2:0]  seq_state;
     wire        adapter_busy;
@@ -274,7 +273,6 @@ module nand_logic_top #(
         .ce_n(ce_n),
         .we_n(we_n),
         .re_n(re_n),
-        .wp_n(wp_n),
         .host_busy_i(host_lockout_sys),
         .decode_event_valid_o(decode_event_valid),
         .decode_event_ready_i(decode_event_ready),
@@ -292,9 +290,6 @@ module nand_logic_top #(
         .prog_data_valid_o(prog_data_valid),
         .prog_data_ready_i(prog_data_ready),
         .prog_data_o(prog_data),
-        .mode_status_o(mode_status),
-        .mode_id_o(mode_id),
-        .mode_read_o(mode_read),
         .fsm_busy_o(fsm_busy),
         .re_fall_o(decode_re_fall),
         .re_rise_o(decode_re_rise),

@@ -16,8 +16,10 @@
 // classification, command sequencing, and registered event/data outputs. It
 // does not sample asynchronous host pins directly and does not own FW-visible
 // IRQ/W1C state or the Page Buffer array.
-// File version: v0.4
+// File version: v0.5
 // Revision history:
+// - v0.5: Remove unused RE#/WP_N inputs and legacy mode outputs;
+//   readout source selection is owned by Register Bank/FW control.
 // - v0.4: Use shared nand_parameters.vh for ONFI address-cycle
 //   constants and timing-checker default cycles.
 // - v0.3: Refactored into registered-output hybrid FSM with
@@ -37,10 +39,7 @@ module onfi_sdr_decode_fsm #(
     input  wire       cle_sync_i,
     input  wire       ale_sync_i,
     input  wire       ce_n_sync_i,
-    input  wire       wp_n_sync_i,
     input  wire       we_rise_i,
-    input  wire       re_fall_i,
-    input  wire       re_rise_i,
 
     input  wire       host_busy_i,
     input  wire       decode_event_ready_i,
@@ -56,10 +55,6 @@ module onfi_sdr_decode_fsm #(
     output wire [7:0] addr4_o,
     output wire [2:0] addr_count_o,
     output wire [12:0] prog_data_count_o,
-
-    output wire       mode_status_o,
-    output wire       mode_id_o,
-    output wire       mode_read_o,
 
     output wire       prog_data_valid_o,
     output wire [7:0] prog_data_o,
@@ -121,12 +116,6 @@ module onfi_sdr_decode_fsm #(
     reg [2:0]  addr_count_d;
     reg [12:0] prog_data_count_q;
     reg [12:0] prog_data_count_d;
-    reg        mode_status_q;
-    reg        mode_status_d;
-    reg        mode_id_q;
-    reg        mode_id_d;
-    reg        mode_read_q;
-    reg        mode_read_d;
     reg        prog_data_valid_q;
     reg        prog_data_valid_d;
     reg [7:0]  prog_data_q;
@@ -148,7 +137,6 @@ module onfi_sdr_decode_fsm #(
     wire       prog_data_accept = prog_data_valid_q && prog_data_ready_i;
     wire       timing_violation =
         CHECK_TIMING_EN && we_rise_i && (we_gap_count_q < T_WC_CYCLES[7:0]);
-    wire       unused_read_control = re_fall_i | re_rise_i | wp_n_sync_i;
 
     assign decode_event_valid_o = decode_event_valid_q;
     assign decoded_op_o = decoded_op_q;
@@ -160,9 +148,6 @@ module onfi_sdr_decode_fsm #(
     assign addr4_o = addr4_q;
     assign addr_count_o = addr_count_q;
     assign prog_data_count_o = prog_data_count_q;
-    assign mode_status_o = mode_status_q;
-    assign mode_id_o = mode_id_q;
-    assign mode_read_o = mode_read_q;
     assign prog_data_valid_o = prog_data_valid_q;
     assign prog_data_o = prog_data_q;
     assign protocol_error_o = protocol_error_q;
@@ -189,9 +174,6 @@ module onfi_sdr_decode_fsm #(
             addr4_q <= 8'h00;
             addr_count_q <= 3'd0;
             prog_data_count_q <= 13'd0;
-            mode_status_q <= 1'b0;
-            mode_id_q <= 1'b0;
-            mode_read_q <= 1'b0;
             prog_data_valid_q <= 1'b0;
             prog_data_q <= 8'h00;
             protocol_error_q <= 1'b0;
@@ -215,9 +197,6 @@ module onfi_sdr_decode_fsm #(
             addr4_q <= addr4_d;
             addr_count_q <= addr_count_d;
             prog_data_count_q <= prog_data_count_d;
-            mode_status_q <= mode_status_d;
-            mode_id_q <= mode_id_d;
-            mode_read_q <= mode_read_d;
             prog_data_valid_q <= prog_data_valid_d;
             prog_data_q <= prog_data_d;
             protocol_error_q <= protocol_error_d;
@@ -244,9 +223,6 @@ module onfi_sdr_decode_fsm #(
         addr4_d = addr4_q;
         addr_count_d = addr_count_q;
         prog_data_count_d = prog_data_count_q;
-        mode_status_d = mode_status_q;
-        mode_id_d = mode_id_q;
-        mode_read_d = mode_read_q;
         prog_data_valid_d = prog_data_valid_q;
         prog_data_d = prog_data_q;
         protocol_error_d = protocol_error_q;
@@ -292,9 +268,6 @@ module onfi_sdr_decode_fsm #(
                         protocol_error_code_d = `ONFI_ERR_INVALID_BUS;
                         state_d = ST_EVENT_HOLD;
                     end else if (cmd_event) begin
-                        mode_status_d = 1'b0;
-                        mode_id_d = 1'b0;
-                        mode_read_d = 1'b0;
                         addr0_d = 8'h00;
                         addr1_d = 8'h00;
                         addr2_d = 8'h00;
@@ -333,7 +306,6 @@ module onfi_sdr_decode_fsm #(
                                     confirm_cmd_d = 8'h00;
                                     pending_op_d = `ONFI_OP_NONE;
                                     start_cmd_d = 8'h00;
-                                    mode_status_d = 1'b1;
                                     decode_event_valid_d = 1'b1;
                                     decoded_op_d = `ONFI_OP_READ_STATUS;
                                     cmd_d = 8'h70;
@@ -421,7 +393,6 @@ module onfi_sdr_decode_fsm #(
 
                         if ((addr_count_q + 3'd1) == addr_target_q) begin
                             if (seq_kind_q == SEQ_READ_ID) begin
-                                mode_id_d = 1'b1;
                                 decode_event_valid_d = 1'b1;
                                 decoded_op_d = `ONFI_OP_READ_ID;
                                 cmd_d = start_cmd_q;
@@ -462,9 +433,6 @@ module onfi_sdr_decode_fsm #(
                         state_d = ST_EVENT_HOLD;
                     end else if (cmd_event) begin
                         if (bus_data == confirm_cmd_q) begin
-                            if (pending_op_q == `ONFI_OP_READ_PAGE) begin
-                                mode_read_d = 1'b1;
-                            end
                             decode_event_valid_d = 1'b1;
                             decoded_op_d = pending_op_q;
                             cmd_d = bus_data;

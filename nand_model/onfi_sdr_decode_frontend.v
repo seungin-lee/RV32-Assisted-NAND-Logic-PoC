@@ -13,8 +13,10 @@
 // Block contract: Exposes raw Decode FSM transaction event and program data
 // stream ports. Host Event CDC and Page Buffer write-path adapters are
 // instantiated by the parent integration top.
-// File version: v0.6
+// File version: v0.7
 // Revision history:
+// - v0.7: Remove legacy decode mode outputs and stop passing
+//   WP_N/RE# into the Decode FSM core; RE# edge pulses remain frontend outputs.
 // - v0.6: Export synchronized RE# edge pulses for the sysclk
 //   Read Output Datapath.
 // - v0.5: Remove internal adapter instances and expose raw Decode
@@ -40,7 +42,6 @@ module onfi_sdr_decode_frontend #(
     input  wire        ce_n,
     input  wire        we_n,
     input  wire        re_n,
-    input  wire        wp_n,
 
     input  wire        host_busy_i,
 
@@ -62,25 +63,20 @@ module onfi_sdr_decode_frontend #(
     input  wire        prog_data_ready_i,
     output wire [7:0]  prog_data_o,
 
-    output wire        mode_status_o,
-    output wire        mode_id_o,
-    output wire        mode_read_o,
     output wire        fsm_busy_o,
     output wire        re_fall_o,
     output wire        re_rise_o,
     output wire [2:0]  seq_state_o
 );
 
-    localparam integer PIN_WIDTH = 14;
+    localparam integer PIN_WIDTH = 13;
     localparam integer PIN_DQ_LSB = 0;
     localparam integer PIN_CLE    = 8;
     localparam integer PIN_ALE    = 9;
     localparam integer PIN_CE_N   = 10;
     localparam integer PIN_WE_N   = 11;
     localparam integer PIN_RE_N   = 12;
-    localparam integer PIN_WP_N   = 13;
     localparam [PIN_WIDTH-1:0] PIN_RESET_VALUE = {
-        1'b1, // wp_n
         1'b1, // re_n
         1'b1, // we_n
         1'b1, // ce_n
@@ -100,13 +96,11 @@ module onfi_sdr_decode_frontend #(
     assign async_pins[PIN_CE_N] = ce_n;
     assign async_pins[PIN_WE_N] = we_n;
     assign async_pins[PIN_RE_N] = re_n;
-    assign async_pins[PIN_WP_N] = wp_n;
 
     wire [7:0] sync_dq = sync_pins[PIN_DQ_LSB +: 8];
     wire       sync_cle = sync_pins[PIN_CLE];
     wire       sync_ale = sync_pins[PIN_ALE];
     wire       sync_ce_n = sync_pins[PIN_CE_N];
-    wire       sync_wp_n = sync_pins[PIN_WP_N];
     wire       sync_we_rise = rise_pulses[PIN_WE_N];
     wire       sync_re_fall = fall_pulses[PIN_RE_N];
     wire       sync_re_rise = rise_pulses[PIN_RE_N];
@@ -136,10 +130,7 @@ module onfi_sdr_decode_frontend #(
         .cle_sync_i(sync_cle),
         .ale_sync_i(sync_ale),
         .ce_n_sync_i(sync_ce_n),
-        .wp_n_sync_i(sync_wp_n),
         .we_rise_i(sync_we_rise),
-        .re_fall_i(sync_re_fall),
-        .re_rise_i(sync_re_rise),
         .host_busy_i(host_busy_i),
         .decode_event_ready_i(decode_event_ready_i),
         .prog_data_ready_i(prog_data_ready_i),
@@ -153,9 +144,6 @@ module onfi_sdr_decode_frontend #(
         .addr4_o(addr4_o),
         .addr_count_o(addr_count_o),
         .prog_data_count_o(prog_data_count_o),
-        .mode_status_o(mode_status_o),
-        .mode_id_o(mode_id_o),
-        .mode_read_o(mode_read_o),
         .prog_data_valid_o(prog_data_valid_o),
         .prog_data_o(prog_data_o),
         .protocol_error_o(protocol_error_o),
