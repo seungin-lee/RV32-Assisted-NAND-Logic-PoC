@@ -17,8 +17,10 @@
 // bus is driven by nand_surrogate_fw_agent. NAND_CONTROL_RV32 selects the
 // PicoRV32-based control agent and keeps host traffic back-pressured until FW
 // initialization reaches the IRQ-enable step.
-// File version: v0.14
+// File version: v0.15
 // Revision history:
+// - v0.15: Remove the ambiguous top-level adapter_busy alias and
+//   use Host Event Adapter busy and Page Buffer busy directly in RB_N gating.
 // - v0.14: Remove unused Decode Frontend mode wires and keep RE#
 //   edge ownership on the Read Output Datapath path.
 // - v0.13: Gate host-ready/backpressure with control-agent ready
@@ -208,7 +210,6 @@ module nand_logic_top #(
     wire        readout_busy;
     wire        fsm_busy;
     wire [2:0]  seq_state;
-    wire        adapter_busy;
     wire [5:0]  op_status;
     wire [7:0]  op_error;
     wire        host_event_pending;
@@ -226,9 +227,9 @@ module nand_logic_top #(
     assign dq_in = dq;
     assign dq = dq_oe ? dq_out : 8'hzz;
     assign decode_event_accept = decode_event_valid && decode_event_ready;
-    assign adapter_busy = host_event_adapter_busy || pb_busy;
     assign host_lockout_sys = reg_busy_sys || !control_ready_sys;
-    assign rb_n = control_ready_sys && !reg_busy_sys && !adapter_busy &&
+    assign rb_n = control_ready_sys && !reg_busy_sys &&
+                  !host_event_adapter_busy && !pb_busy &&
                   !fsm_busy && nand_status[6];
 
     nand_host_pin_status_adapter u_host_pin_status_adapter (

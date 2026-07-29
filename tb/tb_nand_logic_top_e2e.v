@@ -12,8 +12,10 @@
 // Block contract: Drives the canonical ONFI SDR Mode 0 host traffic scenario
 // into the integrated top and checks Decode -> Register Bank -> Surrogate FW
 // -> VPL -> Page Buffer -> Read Output behavior.
-// File version: v0.7
+// File version: v0.8
 // Revision history:
+// - v0.8: Track Host Event Adapter busy and Page Buffer busy separately
+//   after removing the top-level adapter_busy alias.
 // - v0.7: Remove legacy Decode Frontend mode hierarchical
 //   references; readout behavior is checked through REG_READOUT_CTRL and DQ.
 // - v0.6: Update runtime command hint for the compact Makefile
@@ -85,7 +87,8 @@ module tb_nand_logic_top_e2e;
     wire [12:0] readout_ptr;
     wire       readout_busy;
     wire       fsm_busy;
-    wire       adapter_busy;
+    wire       host_event_adapter_busy;
+    wire       pb_busy;
     wire [2:0] seq_state;
     wire       host_event_pending;
     wire [2:0] irq_status;
@@ -131,7 +134,8 @@ module tb_nand_logic_top_e2e;
     assign readout_ptr = u_top.readout_ptr;
     assign readout_busy = u_top.readout_busy;
     assign fsm_busy = u_top.fsm_busy;
-    assign adapter_busy = u_top.adapter_busy;
+    assign host_event_adapter_busy = u_top.host_event_adapter_busy;
+    assign pb_busy = u_top.pb_busy;
     assign seq_state = u_top.seq_state;
     assign host_event_pending = u_top.host_event_pending;
     assign irq_status = u_top.irq_status;
@@ -454,14 +458,16 @@ module tb_nand_logic_top_e2e;
         begin
             i = 0;
             while ((!rb_n || !reg_ready || host_event_pending || irq ||
-                    adapter_busy || fsm_busy) && i < timeout_cycles) begin
+                    host_event_adapter_busy || pb_busy || fsm_busy) &&
+                   i < timeout_cycles) begin
                 wait_sys_cycles(1);
                 i = i + 1;
             end
             if (i >= timeout_cycles) begin
-                $display("[CHECK FAIL] %0s top ready timeout rb_n=%0b reg_ready=%0b host_pending=%0b irq=%0b adapter_busy=%0b fsm_busy=%0b irq_status=0x%01x op_status=0x%02x",
+                $display("[CHECK FAIL] %0s top ready timeout rb_n=%0b reg_ready=%0b host_pending=%0b irq=%0b host_event_adapter_busy=%0b pb_busy=%0b fsm_busy=%0b irq_status=0x%01x op_status=0x%02x",
                          label, rb_n, reg_ready, host_event_pending, irq,
-                         adapter_busy, fsm_busy, irq_status, op_status);
+                         host_event_adapter_busy, pb_busy, fsm_busy,
+                         irq_status, op_status);
                 fail_count = fail_count + 1;
             end else begin
                 $display("[WAIT] %0s ready after %0d sys cycles", label, i);
@@ -523,10 +529,11 @@ module tb_nand_logic_top_e2e;
             end
 
             if (!busy_monitor_seen || !rb_n) begin
-                $display("[CHECK FAIL] %0s busy/ready timeout rb_n=%0b nand_status=0x%02x reg_ready=%0b irq=0x%01x host_pending=%0b adapter_busy=%0b fsm_busy=%0b op_status=0x%02x op_error=0x%02x",
+                $display("[CHECK FAIL] %0s busy/ready timeout rb_n=%0b nand_status=0x%02x reg_ready=%0b irq=0x%01x host_pending=%0b host_event_adapter_busy=%0b pb_busy=%0b fsm_busy=%0b op_status=0x%02x op_error=0x%02x",
                          label, rb_n, nand_status, reg_ready,
-                         irq_status, host_event_pending, adapter_busy,
-                         fsm_busy, op_status, op_error);
+                         irq_status, host_event_pending,
+                         host_event_adapter_busy, pb_busy, fsm_busy,
+                         op_status, op_error);
                 fail_count = fail_count + 1;
             end
             busy_monitor_active = 1'b0;
