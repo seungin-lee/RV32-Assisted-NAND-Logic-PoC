@@ -17,8 +17,10 @@
 // bus is driven by nand_surrogate_fw_agent. NAND_CONTROL_RV32 selects the
 // PicoRV32-based control agent and keeps host traffic back-pressured until FW
 // initialization reaches the IRQ-enable step.
-// File version: v0.15
+// File version: v0.16
 // Revision history:
+// - v0.16: Remove Page Buffer write monitor/count wiring from
+//   top integration after those signals became module-internal state.
 // - v0.15: Remove the ambiguous top-level adapter_busy alias and
 //   use Host Event Adapter busy and Page Buffer busy directly in RB_N gating.
 // - v0.14: Remove unused Decode Frontend mode wires and keep RE#
@@ -122,10 +124,6 @@ module nand_logic_top #(
     wire        prog_data_ready;
     wire [7:0]  prog_data;
     wire        pb_busy;
-    wire        pb_write_valid;
-    wire [12:0] pb_write_addr;
-    wire [7:0]  pb_write_data;
-    wire [12:0] pb_write_count;
     wire        pb_prog_ready;
     wire        pb_overflow;
 
@@ -361,10 +359,6 @@ module nand_logic_top #(
         .readout_rd_data_valid_o(pb_readout_rd_data_valid),
         .readout_rd_data_ready_i(pb_readout_rd_data_ready),
         .readout_rd_data_o(pb_readout_rd_data),
-        .write_valid_o(pb_write_valid),
-        .write_addr_o(pb_write_addr),
-        .write_data_o(pb_write_data),
-        .write_count_o(pb_write_count),
         .prog_ready_o(pb_prog_ready),
         .overflow_o(pb_overflow),
         .busy_o(pb_busy)

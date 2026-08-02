@@ -19,8 +19,10 @@
 // instances.
 // Register Bank IRQ/W1C, VPL, and read-output data drive are outside this test
 // scope.
-// File version: v0.10
+// File version: v0.11
 // Revision history:
+// - v0.11: Capture Page Buffer program data accepts from
+//   prog_data_valid/prog_data_ready handshake after removing PB monitor ports.
 // - v0.10: Align with Decode Frontend port cleanup; read scenarios
 //   verify decoded events instead of legacy mode outputs.
 // - v0.9: Tie off exported frontend RE# edge outputs and Page
@@ -92,11 +94,7 @@ module tb_onfi_sdr_decode_frontend;
     wire       prog_data_valid;
     wire       prog_data_ready;
     wire [7:0] prog_data;
-    wire       pb_write_valid;
-    wire [12:0] pb_write_addr;
-    wire [7:0] pb_write_data;
     reg        pb_clear;
-    wire [12:0] pb_write_count;
     wire       pb_prog_ready;
     wire       pb_overflow;
     wire       pb_busy;
@@ -214,10 +212,6 @@ module tb_onfi_sdr_decode_frontend;
         .readout_rd_data_valid_o(),
         .readout_rd_data_ready_i(1'b0),
         .readout_rd_data_o(),
-        .write_valid_o(pb_write_valid),
-        .write_addr_o(pb_write_addr),
-        .write_data_o(pb_write_data),
-        .write_count_o(pb_write_count),
         .prog_ready_o(pb_prog_ready),
         .overflow_o(pb_overflow),
         .busy_o(pb_busy)
@@ -226,11 +220,11 @@ module tb_onfi_sdr_decode_frontend;
     always #(SYS_CLK_PERIOD_NS/2) sys_clk = ~sys_clk;
 
     always @(posedge sys_clk) begin
-        if (pb_write_valid) begin
+        if (prog_data_valid && prog_data_ready) begin
             if (captured_count < CAPTURE_DEPTH) begin
-                captured_pb[captured_count] <= pb_write_data;
+                captured_pb[captured_count] <= prog_data;
                 $display("[PB] accept[%0d] addr=%0d data=0x%02x",
-                         captured_count, pb_write_addr, pb_write_data);
+                         captured_count, captured_count, prog_data);
             end
             captured_count <= captured_count + 1;
         end
@@ -583,8 +577,6 @@ module tb_onfi_sdr_decode_frontend;
         begin
             check_true(captured_count == PROGRAM_BYTES,
                        "Page Buffer captured all program bytes");
-            check_eq13(pb_write_count, PROGRAM_BYTES[12:0],
-                       "Page Buffer write path count");
             for (i = 0; i < PROGRAM_BYTES; i = i + 1) begin
                 expected = 8'ha0 + i[7:0];
                 check_eq8(captured_pb[i], expected,

@@ -10,11 +10,13 @@
 // - design_spec/nand_adapter_contracts.md
 // Block contract: Accepts Decode FSM program data stream directly in sys_clk,
 // provides sysclk-local VPL direct read/write ports and Read Output direct
-// read port, owns write count/freeze/prog_ready/overflow state, and exposes a
-// write monitor for TB/top integration. Coreclk Register Bank control/status
-// crossing is handled outside this module by nand_page_buffer_adapter.
-// File version: v0.3
+// read port, and owns internal write count/freeze/prog_ready/overflow state.
+// Coreclk Register Bank control/status crossing is handled outside this module
+// by nand_page_buffer_adapter.
+// File version: v0.4
 // Revision history:
+// - v0.4: Remove public write monitor/count ports; keep program
+//   write count as module-internal state.
 // - v0.3: Add sysclk-local Read Output direct read port.
 // - v0.2: Add sysclk-local VPL write/read direct ports for
 //   READ_PAGE fill and PROGRAM_PAGE source reads.
@@ -53,19 +55,15 @@ module nand_page_buffer #(
     input  wire        readout_rd_data_ready_i,
     output reg  [7:0]  readout_rd_data_o,
 
-    output wire        write_valid_o,
-    output wire [12:0] write_addr_o,
-    output wire [7:0]  write_data_o,
-
-    output reg  [12:0] write_count_o,
     output reg         prog_ready_o,
     output reg         overflow_o,
     output wire        busy_o
 );
 
     reg [7:0] storage [0:PAGE_SIZE-1];
+    reg [12:0] write_count_q;
 
-    wire count_full = (write_count_o >= PAGE_SIZE[12:0]);
+    wire count_full = (write_count_q >= PAGE_SIZE[12:0]);
     wire can_accept = (!prog_ready_o) && (!overflow_o) && (!count_full);
     wire data_accept = prog_data_valid_i && prog_data_ready_o;
     wire vpl_wr_addr_valid = (vpl_wr_addr_i < PAGE_SIZE[12:0]);
@@ -86,9 +84,6 @@ module nand_page_buffer #(
     assign readout_rd_req_ready_o = !clear_i && readout_rd_addr_valid &&
                                     (!readout_rd_data_valid_o ||
                                      readout_rd_data_accept);
-    assign write_valid_o = data_accept;
-    assign write_addr_o = write_count_o;
-    assign write_data_o = prog_data_i;
     assign busy_o = prog_data_valid_i || prog_ready_o || overflow_o ||
                     vpl_wr_valid_i || vpl_rd_req_valid_i ||
                     vpl_rd_data_valid_o || readout_rd_req_valid_i ||
@@ -96,7 +91,7 @@ module nand_page_buffer #(
 
     always @(posedge sys_clk or negedge sys_rst_n) begin
         if (!sys_rst_n) begin
-            write_count_o <= 13'd0;
+            write_count_q <= 13'd0;
             prog_ready_o  <= 1'b0;
             overflow_o    <= 1'b0;
             vpl_rd_data_valid_o <= 1'b0;
@@ -104,7 +99,7 @@ module nand_page_buffer #(
             readout_rd_data_valid_o <= 1'b0;
             readout_rd_data_o <= 8'h00;
         end else if (clear_i) begin
-            write_count_o <= 13'd0;
+            write_count_q <= 13'd0;
             prog_ready_o  <= 1'b0;
             overflow_o    <= 1'b0;
             vpl_rd_data_valid_o <= 1'b0;
@@ -121,8 +116,8 @@ module nand_page_buffer #(
             end
 
             if (data_accept) begin
-                storage[write_count_o] <= prog_data_i;
-                write_count_o <= write_count_o + 13'd1;
+                storage[write_count_q] <= prog_data_i;
+                write_count_q <= write_count_q + 13'd1;
             end
 
             if (freeze_i && !overflow_o) begin

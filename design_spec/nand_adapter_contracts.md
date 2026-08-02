@@ -1,5 +1,5 @@
 # NAND Adapter Contracts
-Version: v0.17
+Version: v0.18
 Status: active
 
 ## 1. 문서 목적
@@ -173,8 +173,8 @@ Host Pin Status Adapter는 host-facing pin 중 Register Bank/FW-visible status�
 Page Buffer Adapter는 Register Bank와 Page Buffer 사이의 control/status handoff를
 담당한다. 2048-byte program data input stream은 Decode FSM과 Page Buffer가 같은
 sysclk domain에 있으므로 이 adapter를 통과하지 않는다. 현재 RTL에서는
-`nand_page_buffer`가 program data stream, write count, freeze/prog_ready, overflow,
-storage를 직접 소유한다.
+`nand_page_buffer`가 program data stream, module-internal write count,
+freeze/prog_ready, overflow, storage를 직접 소유한다.
 
 Decode FSM에서 Page Buffer로 가는 sysclk-local program stream:
 
@@ -184,21 +184,13 @@ prog_data_ready
 prog_data_byte[7:0]
 ```
 
-Page Buffer 내부 write monitor:
-
-```text
-write_valid
-write_addr
-write_data[7:0]
-```
-
 이 stream의 기준:
 
 - `prog_data_valid && prog_data_ready`인 byte만 Page Buffer write로 commit한다.
 - `prog_data_ready == 0`이면 Decode FSM은 data input을 accept하지 않거나 문서화된
   protocol error/backpressure 정책을 적용한다.
-- `write_valid/write_addr/write_data`는 Page Buffer가 실제 accept한 write를 관찰하기
-  위한 monitor 성격이며, Page Buffer 외부에 별도 write-ready owner를 두지 않는다.
+- Page Buffer accepted write는 별도 설계 포트로 노출하지 않는다. 검증용 관측은
+  `prog_data_valid && prog_data_ready` handshake와 TB-local counter를 사용한다.
 - `prog_data_count`는 Page Buffer write path가 실제 accept한 byte 수와 일치해야 한다.
 - maximum page size 초과는 Page Buffer overflow status로 남긴다.
 - 현재 Page Buffer RTL은 freeze 상태 추가 write에 별도 error bit를 만들지 않고
@@ -220,9 +212,8 @@ Page Buffer Adapter는 NAND-specific clear/status policy와 작은 CDC handoff�
 포함한다. 2048-byte bulk data CDC는 현재 contract 밖이며, `cdc_valid_ack` 반복
 사용이 아니라 async FIFO 또는 stream 전용 adapter contract로 다룬다.
 현재 RTL은 Register Bank 입력 계약에 맞춰 `prog_ready`와 `overflow`를 coreclk로
-mirror하고, byte count는 Decode event의 `prog_data_count`와 sysclk Page Buffer
-write path output으로 유지한다. Register Bank에 별도 Page Buffer count mirror는
-현재 contract에 없다.
+mirror하고, byte count는 Decode event의 `prog_data_count`로 전달한다. Register Bank에
+별도 Page Buffer count mirror나 Page Buffer write monitor port는 현재 contract에 없다.
 
 ## 7. VPL Command/Response Adapter
 
@@ -319,6 +310,7 @@ ignore/error/lockout 중 문서화된 정책으로 처리한다. Busy 중 허용
 
 | Version | Description |
 | --- | --- |
+| v0.18 | Page Buffer public write monitor/count port 제거에 맞춰 adapter contract의 write monitor 표현을 handshake/TB-local 관측 기준으로 정리. |
 | v0.17 | CDC primitive 참조를 NAND-owned vendored IP와 `nand_cdc_ip.md` 기준으로 갱신. |
 | v0.16 | 미래형 표현을 현재 adapter contract와 out-of-scope 표현으로 정리하고 문서 status를 active로 갱신. |
 | v0.15 | 삭제된 Page Buffer CDC/timing 참고 노트 참조를 current adapter contract에서 제거. |

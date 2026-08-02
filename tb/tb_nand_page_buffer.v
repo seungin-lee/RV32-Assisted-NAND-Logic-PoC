@@ -7,10 +7,12 @@
 // - design_spec/Architecture.md
 // - design_spec/nand_adapter_contracts.md
 // Block contract: Checks direct sysclk program data accept, VPL direct
-// write/read access, Read Output direct read access, write monitor,
-// freeze/prog_ready, clear, and overflow behavior.
-// File version: v0.3
+// write/read access, Read Output direct read access, handshake-based program
+// stream capture, freeze/prog_ready, clear, and overflow behavior.
+// File version: v0.4
 // Revision history:
+// - v0.4: Remove Page Buffer public write monitor/count port use;
+//   capture program stream accepts from valid/ready handshake.
 // - v0.3: Add Read Output direct read port checks.
 // - v0.2: Add VPL direct write/read port checks.
 // - v0.1: Initial Page Buffer direct write path smoke test.
@@ -43,10 +45,6 @@ module tb_nand_page_buffer;
     wire       readout_rd_data_valid;
     reg        readout_rd_data_ready;
     wire [7:0] readout_rd_data;
-    wire       write_valid;
-    wire [12:0] write_addr;
-    wire [7:0] write_data;
-    wire [12:0] write_count;
     wire       prog_ready;
     wire       overflow;
     wire       busy;
@@ -81,10 +79,6 @@ module tb_nand_page_buffer;
         .readout_rd_data_valid_o(readout_rd_data_valid),
         .readout_rd_data_ready_i(readout_rd_data_ready),
         .readout_rd_data_o(readout_rd_data),
-        .write_valid_o(write_valid),
-        .write_addr_o(write_addr),
-        .write_data_o(write_data),
-        .write_count_o(write_count),
         .prog_ready_o(prog_ready),
         .overflow_o(overflow),
         .busy_o(busy)
@@ -93,9 +87,9 @@ module tb_nand_page_buffer;
     always #CLK_HALF_NS sys_clk = ~sys_clk;
 
     always @(posedge sys_clk) begin
-        if (write_valid) begin
-            if (write_addr < PAGE_SIZE[12:0]) begin
-                captured[write_addr] <= write_data;
+        if (prog_data_valid && prog_data_ready) begin
+            if (accept_count < PAGE_SIZE) begin
+                captured[accept_count] <= prog_data;
             end
             accept_count <= accept_count + 1;
         end
@@ -222,7 +216,6 @@ module tb_nand_page_buffer;
         write_byte(8'ha0);
         write_byte(8'ha1);
         write_byte(8'ha2);
-        check_true(write_count == 13'd3, "write count after three bytes");
         check_true(accept_count == 3, "accept count after three bytes");
         check_true(captured[0] == 8'ha0, "captured byte 0");
         check_true(captured[2] == 8'ha2, "captured byte 2");
@@ -238,9 +231,9 @@ module tb_nand_page_buffer;
         wait_clk(1);
         clear = 1'b0;
         wait_clk(1);
-        check_true(write_count == 13'd0, "write count clears");
         check_true(!prog_ready, "prog_ready clears");
         check_true(!overflow, "overflow clears");
+        accept_count = 0;
 
         vpl_write_byte(13'd0, 8'hc0);
         vpl_write_byte(13'd1, 8'hc1);
@@ -253,7 +246,7 @@ module tb_nand_page_buffer;
         write_byte(8'hb1);
         write_byte(8'hb2);
         write_byte(8'hb3);
-        check_true(write_count == PAGE_SIZE[12:0], "write count reaches page size");
+        check_true(accept_count == PAGE_SIZE, "accept count reaches page size");
         prog_data = 8'hff;
         prog_data_valid = 1'b1;
         wait_clk(1);

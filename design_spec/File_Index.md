@@ -1,5 +1,5 @@
 # NAND RTL/TB/FW File Index
-Version: v0.33
+Version: v0.34
 Status: active
 
 이 문서는 RTL/TB/FW 파일 위치와 한 줄 역할을 빠르게 찾기 위한 index다. 상세
@@ -14,7 +14,7 @@ architecture와 block contract는 `Architecture.md` 및 각 설계 문서를 따
 | `nand_model/pin_sync_edge_detect.v` | Generic sync IP | ONFI 의미를 모르는 범용 multi-bit 2FF synchronizer와 rise/fall edge detector | `SIMPLE_ONFI_SDR_decode_fsm.md`, `nand_cdc_ip.md` |
 | `nand_model/onfi_sdr_decode_fsm.v` | Decode FSM | registered-output hybrid FSM으로 synchronized write-side pin-level 입력을 내부 bus event로 classify하고 transaction event/program data stream으로 decode | `SIMPLE_ONFI_SDR_decode_fsm.md`, `FSM_RTL_Design_Guide.md` |
 | `nand_model/nand_role_adapters.v` | Reusable / Role Adapters | parameterized CDC wrapper, Host Event CDC plus busy mirror, Host Pin Status `wp_n` mirror, Page Buffer control/status CDC, VPL Command/Response, Read Output Mirror source/status/ID snapshot adapter | `nand_adapter_contracts.md`, `Architecture.md` |
-| `nand_model/nand_page_buffer.v` | Page Buffer | sysclk domain program data direct input, VPL direct read/write port, Read Output direct read port, storage, write count, freeze/prog_ready, overflow, clear handling | `nand_page_buffer.md`, `Architecture.md`, `nand_adapter_contracts.md` |
+| `nand_model/nand_page_buffer.v` | Page Buffer | sysclk domain program data direct input, VPL direct read/write port, Read Output direct read port, storage, internal write count, freeze/prog_ready, overflow, clear handling | `nand_page_buffer.md`, `Architecture.md`, `nand_adapter_contracts.md` |
 | `nand_model/nand_read_output_datapath.v` | Read Output Datapath | sysclk Read ID/Status/Page Buffer source mux, RE# fall 기반 DQ output, RE# rise 기반 DQ release, read pointer handling | `nand_read_output_datapath.md`, `nand_register_bank.md`, `Architecture.md` |
 | `nand_model/onfi_sdr_decode_frontend.v` | Decode front-end wrapper | 범용 pin sync와 Decode FSM을 묶고 raw transaction/program stream handoff와 Read Output Datapath용 synchronized RE# edge pulse를 노출하는 frontend top | `Architecture.md`, `SIMPLE_ONFI_SDR_decode_fsm.md`, `nand_adapter_contracts.md`, `nand_read_output_datapath.md` |
 | `nand_model/cdc_valid_ack.sv` | Reusable CDC IP | multi-bit payload valid/ack CDC primitive | `nand_cdc_ip.md`, `nand_adapter_contracts.md` |
@@ -60,7 +60,7 @@ architecture와 block contract는 `Architecture.md` 및 각 설계 문서를 따
 | `tb/tb_onfi_sdr_decode_fsm.v` | `onfi_sdr_decode_fsm` | synchronized write-side pin-level 입력 기준 event hold, address snapshot, program stream smoke test | `make sim TB=tb_onfi_sdr_decode_fsm` |
 | `tb/tb_onfi_sdr_decode_frontend.v` | `onfi_sdr_decode_frontend` + role adapters + `nand_page_buffer` | behavior reference/host traffic scenario 기반 Decode frontend + Host Event Adapter + Page Buffer scoreboard test | `make sim TB=tb_onfi_sdr_decode_frontend` |
 | `tb/tb_nand_role_adapters.v` | `nand_role_adapters` | Host Event CDC/busy mirror, Host Pin Status `wp_n` mirror, Page Buffer control/status CDC, VPL Command/Response, Read Output Mirror adapter smoke test | `make sim TB=tb_nand_role_adapters` |
-| `tb/tb_nand_page_buffer.v` | `nand_page_buffer` | direct program stream, VPL direct read/write port, Read Output direct read port, write monitor, freeze/prog_ready, clear, overflow smoke test | `make sim TB=tb_nand_page_buffer` |
+| `tb/tb_nand_page_buffer.v` | `nand_page_buffer` | direct program stream handshake, VPL direct read/write port, Read Output direct read port, freeze/prog_ready, clear, overflow smoke test | `make sim TB=tb_nand_page_buffer` |
 | `tb/tb_nand_read_output_datapath.v` | `nand_read_output_datapath` + `nand_page_buffer` | Read ID 00h/20h, Read Status, Page Buffer readout source mux smoke test | `make sim TB=tb_nand_read_output_datapath` |
 | `tb/tb_nand_vpl_executor.v` | `nand_vpl_executor` | VPL command/response, latency, READ/PROGRAM/ERASE data effect, range/PB status error, response backpressure smoke test | `make sim TB=tb_nand_vpl_executor` |
 | `tb/tb_nand_register_bank.v` | `nand_register_bank` | host mailbox/IRQ/W1C, FW MMIO write/read, VPL start/result/transfer-byte snapshot, clear pulse directed smoke test | `make sim TB=tb_nand_register_bank` |
@@ -71,6 +71,7 @@ architecture와 block contract는 `Architecture.md` 및 각 설계 문서를 따
 
 | Version | Description |
 | --- | --- |
+| v0.34 | Page Buffer public write monitor/count port 제거에 맞춰 RTL/TB 역할 설명을 internal write count와 handshake scoreboard 기준으로 갱신. |
 | v0.33 | Decode FSM/Frontend legacy `wp_n`/`re_n` core input과 `mode_*` output 제거에 맞춰 RTL/TB 역할 설명을 갱신. |
 | v0.32 | Makefile alias target 제거에 맞춰 실행 명령을 `sim`, `sim-rv32`, `fw`, `cdc-formal*` 중심으로 갱신. |
 | v0.31 | SymbiYosys `tools/sby` tool submodule과 `make test-cdc-formal-sby` target을 인덱싱. |

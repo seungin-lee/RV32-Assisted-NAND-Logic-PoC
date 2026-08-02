@@ -12,8 +12,10 @@
 // Block contract: Drives the canonical ONFI SDR Mode 0 host traffic scenario
 // into the integrated top and checks Decode -> Register Bank -> Surrogate FW
 // -> VPL -> Page Buffer -> Read Output behavior.
-// File version: v0.8
+// File version: v0.9
 // Revision history:
+// - v0.9: Remove Page Buffer monitor/count hierarchical references;
+//   count accepted program bytes from top internal Decode stream handshake.
 // - v0.8: Track Host Event Adapter busy and Page Buffer busy separately
 //   after removing the top-level adapter_busy alias.
 // - v0.7: Remove legacy Decode Frontend mode hierarchical
@@ -73,10 +75,6 @@ module tb_nand_logic_top_e2e;
     wire [7:0] dq_out;
     wire       dq_oe;
     wire       rb_n;
-    wire       pb_write_valid;
-    wire [12:0] pb_write_addr;
-    wire [7:0] pb_write_data;
-    wire [12:0] pb_write_count;
     wire       pb_prog_ready;
     wire       pb_overflow;
     wire [7:0] nand_status;
@@ -120,10 +118,6 @@ module tb_nand_logic_top_e2e;
     assign dq = host_dq_oe ? host_dq : 8'hzz;
     assign dq_out = dq;
     assign dq_oe = u_top.dq_oe;
-    assign pb_write_valid = u_top.pb_write_valid;
-    assign pb_write_addr = u_top.pb_write_addr;
-    assign pb_write_data = u_top.pb_write_data;
-    assign pb_write_count = u_top.pb_write_count;
     assign pb_prog_ready = u_top.pb_prog_ready;
     assign pb_overflow = u_top.pb_overflow;
     assign nand_status = u_top.nand_status;
@@ -187,10 +181,10 @@ module tb_nand_logic_top_e2e;
             fail_count <= fail_count + 1;
         end
 
-        if (pb_write_valid) begin
+        if (u_top.prog_data_valid && u_top.prog_data_ready) begin
             pb_accept_count <= pb_accept_count + 1;
             $display("[PB] accept[%0d] addr=%0d data=0x%02x",
-                     pb_accept_count, pb_write_addr, pb_write_data);
+                     pb_accept_count, pb_accept_count, u_top.prog_data);
         end
 
         if (core_rst_n && rv32_trap) begin
@@ -546,14 +540,13 @@ module tb_nand_logic_top_e2e;
         integer i;
         begin
             i = 0;
-            while ((pb_write_count != 13'd0 || pb_prog_ready ||
-                    pb_overflow) && i < timeout_cycles) begin
+            while ((pb_prog_ready || pb_overflow) && i < timeout_cycles) begin
                 wait_sys_cycles(1);
                 i = i + 1;
             end
-            if (pb_write_count != 13'd0 || pb_prog_ready || pb_overflow) begin
-                $display("[CHECK FAIL] %0s PB clear timeout count=%0d prog_ready=%0b overflow=%0b",
-                         label, pb_write_count, pb_prog_ready, pb_overflow);
+            if (pb_prog_ready || pb_overflow) begin
+                $display("[CHECK FAIL] %0s PB clear timeout prog_ready=%0b overflow=%0b",
+                         label, pb_prog_ready, pb_overflow);
                 fail_count = fail_count + 1;
             end else begin
                 $display("[WAIT] %0s PB cleared after %0d cycles", label, i);
@@ -680,8 +673,6 @@ module tb_nand_logic_top_e2e;
         host_cmd_expect_busy(8'h10, "Program confirm 10h");
         wait_busy_then_ready("Program", WAIT_PROGRAM);
         wait_page_buffer_cleared("Program", WAIT_SHORT);
-        check_eq13(pb_write_count, 13'd0,
-                   "Page Buffer count cleared after successful program");
         check_true(!pb_prog_ready, "Page Buffer prog_ready cleared after program");
         check_true(!pb_overflow, "Page Buffer overflow clear after program");
         check_true(pb_accept_count == PROGRAM_BYTES,

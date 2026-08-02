@@ -98,10 +98,6 @@ module tb_nand_read_output_datapath;
         .readout_rd_data_valid_o(pb_rd_data_valid),
         .readout_rd_data_ready_i(pb_rd_data_ready),
         .readout_rd_data_o(pb_rd_data),
-        .write_valid_o(),
-        .write_addr_o(),
-        .write_data_o(),
-        .write_count_o(),
         .prog_ready_o(),
         .overflow_o(),
         .busy_o()

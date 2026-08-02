@@ -1,5 +1,5 @@
 # Nand Model Specification Index
-Version: v0.53
+Version: v0.54
 
 이 문서는 SIMPLE NAND model의 최상위 인덱스 문서이다. 상세 사양은 `design_spec/` 아래 문서로 분리되어 있으며, 이 파일은 빠르게 원하는 문서 위치를 찾기 위한 lightweight map으로 유지한다.
 
@@ -14,7 +14,7 @@ Version: v0.53
 | 합성 가능한 ONFI Decode FSM 설계 | `design_spec/SIMPLE_ONFI_SDR_decode_fsm.md` |
 | NAND Adapter contract, reusable adapter primitive policy, Host Event/Host Pin Status/Page Buffer/VPL/Read Output role adapter | `design_spec/nand_adapter_contracts.md` |
 | NAND-owned CDC primitive, external event adapter, CDC 검증 목적/tool/command/flow, directed/lint/formal coverage와 한계 | `design_spec/nand_cdc_ip.md` |
-| Page Buffer direct program stream, VPL direct read/write port, Read Output read port, count, freeze/prog_ready, overflow, current RTL scope | `design_spec/nand_page_buffer.md` |
+| Page Buffer direct program stream, VPL direct read/write port, Read Output read port, internal count, freeze/prog_ready, overflow, current RTL scope | `design_spec/nand_page_buffer.md` |
 | Read ID/Status/Page Buffer source를 host `re_n`에 맞춰 `dq_out`으로 내보내는 Read Output Datapath | `design_spec/nand_read_output_datapath.md` |
 | Read/Program/Erase 시 WL/BL/bias의 cell-level 의미 | `design_spec/nand_cell_operation.md` |
 | Register Bank MMIO map, offset, bitfield, host mailbox RO view, IRQ/W1C, VPL command/status/transfer-byte snapshot contract | `design_spec/nand_register_bank.md` |
@@ -31,7 +31,7 @@ Version: v0.53
 | `nand_model/nand_parameters.vh` | SIMPLE NAND geometry, SDR Mode 0 timing, host TB guard cycle, address-cycle macro의 canonical include | `SIMPLE_ONFI_SDR_behavior_model_reference.md`, `host_tb_traffice_scenario.md`, `SIMPLE_ONFI_SDR_decode_fsm.md` |
 | `nand_model/onfi_sdr_decode_fsm.v` | registered-output hybrid ONFI SDR Decode FSM core. write-side command/address/data input decode와 transaction event/program stream 생성 담당 | `SIMPLE_ONFI_SDR_decode_fsm.md`, `FSM_RTL_Design_Guide.md`, `nand_adapter_contracts.md` |
 | `nand_model/nand_role_adapters.v` | reusable CDC wrapper, Host Event CDC plus busy mirror, Host Pin Status `wp_n` mirror, Page Buffer control/status CDC, VPL/Read Output role adapters | `nand_adapter_contracts.md`, `Architecture.md`, `nand_cdc_ip.md` |
-| `nand_model/nand_page_buffer.v` | sysclk Page Buffer storage, direct program data input, VPL direct read/write port, Read Output direct read port, write count/freeze/prog_ready/overflow owner | `design_spec/nand_page_buffer.md`, `Architecture.md`, `nand_adapter_contracts.md` |
+| `nand_model/nand_page_buffer.v` | sysclk Page Buffer storage, direct program data input, VPL direct read/write port, Read Output direct read port, internal write count/freeze/prog_ready/overflow owner | `design_spec/nand_page_buffer.md`, `Architecture.md`, `nand_adapter_contracts.md` |
 | `nand_model/nand_read_output_datapath.v` | sysclk Read ID/Status/Page Buffer source mux, `re_n` fall 기반 `dq_out` drive, `re_n` rise 기반 `dq_oe` release, read pointer owner | `design_spec/nand_read_output_datapath.md`, `design_spec/nand_register_bank.md`, `Architecture.md` |
 | `nand_model/onfi_sdr_decode_frontend.v` | Pin Sync + Decode FSM raw handoff frontend wrapper. RE# edge pulse는 Read Output Datapath용으로 노출 | `Architecture.md`, `SIMPLE_ONFI_SDR_decode_fsm.md`, `nand_adapter_contracts.md`, `design_spec/nand_read_output_datapath.md` |
 | `nand_model/cdc_valid_ack.sv` | NAND-owned multi-bit payload valid/ack CDC primitive | `design_spec/nand_cdc_ip.md`, `nand_adapter_contracts.md` |
@@ -58,7 +58,7 @@ Version: v0.53
 | `tb/tb_onfi_sdr_decode_fsm.v` | Decode FSM module smoke testbench | `SIMPLE_ONFI_SDR_decode_fsm.md` |
 | `tb/tb_onfi_sdr_decode_frontend.v` | behavior reference/host traffic scenario 기반 Decode frontend + Host Event Adapter + Page Buffer scoreboard testbench | `Architecture.md`, `SIMPLE_ONFI_SDR_behavior_model_reference.md`, `host_tb_traffice_scenario.md`, `nand_adapter_contracts.md` |
 | `tb/tb_nand_role_adapters.v` | Host Event CDC, Page Buffer control/status CDC, VPL Command/Response, Read Output Mirror adapter smoke testbench | `nand_adapter_contracts.md`, `Architecture.md` |
-| `tb/tb_nand_page_buffer.v` | Page Buffer direct program stream, VPL direct read/write, write-count/freeze/clear/overflow smoke testbench | `nand_adapter_contracts.md`, `Architecture.md`, `design_spec/nand_page_buffer.md` |
+| `tb/tb_nand_page_buffer.v` | Page Buffer direct program stream handshake, VPL direct read/write, freeze/clear/overflow smoke testbench | `nand_adapter_contracts.md`, `Architecture.md`, `design_spec/nand_page_buffer.md` |
 | `tb/tb_nand_read_output_datapath.v` | Read ID 00h/20h, Read Status, Page Buffer readout source mux smoke testbench | `design_spec/nand_read_output_datapath.md`, `design_spec/nand_page_buffer.md` |
 | `tb/tb_nand_vpl_executor.v` | VPL executor command/response, READ/PROGRAM/ERASE data effect, latency, error, backpressure smoke testbench | `design_spec/nand_model_vpl.md`, `design_spec/nand_page_buffer.md` |
 | `tb/tb_nand_register_bank.v` | Register Bank host mailbox, VPL command/status/transfer-byte snapshot directed smoke testbench | `design_spec/nand_register_bank.md` |
@@ -227,6 +227,7 @@ make cdc-formal-sby
 ## Version History
 | Version | 변경사항 |
 | --- | --- |
+| v0.54 | Page Buffer public write monitor/count port 제거에 맞춰 quick map과 TB 설명을 internal count/handshake scoreboard 기준으로 갱신. |
 | v0.53 | Decode FSM core의 write-side decode ownership과 Decode Frontend의 RE# edge export 역할을 current RTL contract 기준으로 quick map에 반영. |
 | v0.52 | Makefile alias target 제거에 맞춰 host traffic/PicoRV32/CDC current 실행 안내와 TB 로그 문구를 새 target surface로 정리. |
 | v0.51 | Makefile alias target 제거에 맞춰 현재 실행 명령을 `sim`, `sim-rv32`, `fw`, `top`, `top-rv32`, `cdc-*` 중심으로 갱신. |
