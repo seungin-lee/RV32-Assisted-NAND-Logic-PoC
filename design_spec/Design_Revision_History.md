@@ -1,5 +1,5 @@
 # NAND Design Revision History
-Version: v0.48
+Version: v0.49
 Status: active
 
 이 문서는 상세 설계 설명이 아니라 top/block/file revision 추적용이다. 세부
@@ -9,6 +9,7 @@ architecture와 계약은 `Architecture.md` 및 각 설계 문서를 따른다.
 
 | Top Rev | Scope | Summary | Verification |
 | --- | --- | --- | --- |
+| D0.47 | Page Buffer role documentation | `nand_page_buffer.md`에 Page Buffer의 NAND page register 역할, 주변 block interaction, 각 경로의 사용 시점을 표로 보강하고 current RTL 연결과 대조 | `git diff --check`, `bash scripts/build_mkdocs_site.sh`, RTL/document cross-check |
 | D0.46 | Page Buffer public monitor port cleanup | `nand_page_buffer`의 public write monitor/count port를 제거하고 accepted program write 관측을 설계 포트가 아닌 valid/ready handshake 기반 TB-local scoreboard로 전환. Top integration의 불필요한 `pb_write_*` wire도 제거 | `make top`, `make top-rv32`, `make sim TB=tb_nand_page_buffer`, `make sim TB=tb_onfi_sdr_decode_frontend`, `make sim TB=tb_nand_read_output_datapath`, `make sim`, `git diff --check`, `bash scripts/build_mkdocs_site.sh` |
 | D0.45 | NAND Logic Top busy signal cleanup | `nand_logic_top`에서 의미가 모호한 top-level `adapter_busy` alias를 제거하고, `rb_n` gating과 E2E TB debug 관측을 Host Event Adapter busy와 Page Buffer busy 신호로 분리 | `make top`, `make sim`, `git diff --check` |
 | D0.44 | Decode FSM interface ownership cleanup | Decode FSM core에서 unused `wp_n`/`re_n` input과 legacy `mode_*` output을 제거하고, `wp_n`은 Host Pin Status Adapter, `re_n` edge는 Read Output Datapath, readout source는 Register Bank `REG_READOUT_CTRL` 경로가 소유한다는 현재 RTL 계약으로 문서/TB를 정렬 | `make sim TB=tb_onfi_sdr_decode_fsm`, `make sim TB=tb_onfi_sdr_decode_frontend`, `make top`, `make sim`, `bash scripts/build_mkdocs_site.sh`, `git diff --check` |
@@ -60,6 +61,7 @@ architecture와 계약은 `Architecture.md` 및 각 설계 문서를 따른다.
 
 | Top Rev | File | Block | File Version | Related Design Doc / Version | Change Summary | Verification |
 | --- | --- | --- | --- | --- | --- | --- |
+| D0.47 | `design_spec/nand_page_buffer.md` | Page Buffer design spec | v0.7 | `nand_page_buffer.v` v0.4, `Architecture.md` v0.29 | Page Buffer가 program input buffer, program source, read destination, readout source, control/status endpoint로 동작하는 역할 모델과 주변 block interaction table을 추가 | documentation review, RTL/document cross-check |
 | D0.46 | `nand_model/nand_page_buffer.v` | Page Buffer | v0.4 | `nand_page_buffer.md` v0.6, `nand_adapter_contracts.md` v0.18 | public `write_valid_o`/`write_addr_o`/`write_data_o`/`write_count_o` port를 제거하고 write count를 module-internal state로 유지 | D0.46 regression subset |
 | D0.46 | `nand_model/nand_logic_top.v` | NAND Logic Top | v0.16 | `Architecture.md` v0.29, `nand_page_buffer.md` v0.6 | 삭제된 Page Buffer monitor/count port에 맞춰 top-local `pb_write_*` wire와 instance 연결을 제거 | D0.46 regression subset |
 | D0.46 | `tb/tb_nand_page_buffer.v` | Page Buffer TB | v0.4 | `nand_page_buffer.md` v0.6 | Page Buffer monitor port 대신 `prog_data_valid && prog_data_ready` handshake와 TB-local counter로 program stream accept를 검증 | D0.46 regression subset |
@@ -409,6 +411,7 @@ architecture와 계약은 `Architecture.md` 및 각 설계 문서를 따른다.
 
 | Version | Description |
 | --- | --- |
+| v0.49 | Page Buffer role documentation 작업을 D0.47로 추가. |
 | v0.48 | Page Buffer public monitor port cleanup 작업을 D0.46으로 추가. |
 | v0.47 | NAND Logic Top busy signal cleanup 작업을 D0.45로 추가. |
 | v0.46 | Decode FSM interface ownership cleanup 작업을 D0.44로 추가. |

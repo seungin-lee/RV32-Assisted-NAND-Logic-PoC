@@ -1,5 +1,5 @@
 # NAND Page Buffer
-Version: v0.6
+Version: v0.7
 Status: active
 
 ## 1. 문서 목적
@@ -17,6 +17,19 @@ Register Bank/Page Buffer control-status handoff는 `nand_adapter_contracts.md`�
 
 `nand_page_buffer`는 sysclk domain의 program-data write path와 Page Buffer 내부 상태를
 소유한다.
+
+Page Buffer는 NAND 관점의 page register/data register 역할을 하는 sysclk-local
+storage다. Host program data를 VPL program 전까지 보관하고, VPL read 결과를 Host
+readout 전까지 보관한다. Register Bank는 Page Buffer storage를 직접 읽거나 쓰지
+않고, Page Buffer Adapter를 통해 clear/status만 교환한다.
+
+| 관점 | 역할 |
+| --- | --- |
+| Program input buffer | Host가 `80h` 이후 DQ로 전달한 program byte를 Decode FSM stream으로 받아 저장 |
+| Program source | `10h` confirm 이후 `freeze_i`로 고정된 data를 VPL `PROGRAM_PAGE` source로 제공 |
+| Read destination | VPL `READ_PAGE`가 NAND array에서 읽은 byte를 host readout 전에 저장 |
+| Readout source | Host `re_n` read timing에 맞춰 Read Output Datapath가 읽을 byte를 제공 |
+| Control/status endpoint | Register Bank와 bulk data가 아닌 clear, `prog_ready`, `overflow`만 CDC handoff |
 
 ```mermaid
 flowchart LR
@@ -142,6 +155,16 @@ Read Output direct port는 Page Buffer와 Read Output Datapath가 같은 sysclk 
 
 ## 5. 주변 Block과의 관계
 
+| 상대 block | 주고받는 신호 | 언제 | 목적 |
+| --- | --- | --- | --- |
+| Decode FSM / Decode Frontend | `prog_data_valid_i`, `prog_data_ready_o`, `prog_data_i` | Page Program data input phase | Host DQ write byte를 Page Buffer storage에 순차 저장 |
+| Top integration | `freeze_i` | Program confirm event가 accepted된 cycle | 저장된 program data를 VPL program source로 고정하고 `prog_ready_o` set |
+| Register Bank / Page Buffer Adapter | `clear_i`, `prog_ready_o`, `overflow_o` | FW/control이 PB 상태를 clear하거나 status를 볼 때 | coreclk Register Bank와 sysclk Page Buffer 사이 control/status CDC |
+| VPL Executor | `vpl_wr_*` | `READ_PAGE` 실행 중 | NAND array data를 Page Buffer에 fill |
+| VPL Executor | `vpl_rd_*` | `PROGRAM_PAGE` 실행 중 | Page Buffer data를 읽어 NAND array에 program |
+| Read Output Datapath | `readout_rd_*` | Host가 `re_n`으로 page data를 읽을 때 | Page Buffer byte를 DQ output path에 제공 |
+| NAND Logic Top | `busy_o` | Page Buffer activity/status가 남아 있을 때 | top-level `rb_n` ready/busy 판단에 반영 |
+
 - Decode FSM은 `prog_data_valid_i && prog_data_ready_o`로 accept된 byte만
   `prog_data_count`에 반영해야 한다.
 - Program confirm transaction이 Host Event Adapter에서 accepted되면 상위 integration은
@@ -159,6 +182,7 @@ Read Output direct port는 Page Buffer와 Read Output Datapath가 같은 sysclk 
 
 | Version | Description |
 | --- | --- |
+| v0.7 | Page Buffer의 NAND page register 역할, 주변 block interaction, 각 경로의 사용 시점을 표로 보강. |
 | v0.6 | Page Buffer public write monitor/count port 제거에 맞춰 interface contract와 동작 규칙을 내부 write count 기준으로 정리. |
 | v0.5 | 구현 완료 상태에 맞춰 문서 status를 active로 갱신. |
 | v0.4 | Read Output Datapath용 sysclk-local read port 계약을 현재 RTL scope로 갱신. |
